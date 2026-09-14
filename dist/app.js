@@ -1,3 +1,5 @@
+import { mountDocumentEditor } from './editor.js';
+
 const icons = {
   chat: '<path d="M20 11a8 8 0 0 1-8 8H5l-3 2v-9a9 9 0 0 1 18-1Z"/><path d="M7 10h8M7 14h5"/>',
   book: '<path d="M3 4h7l2 2 2-2h7v15h-7l-2 2-2-2H3Z"/><path d="M12 6v15"/>',
@@ -45,7 +47,39 @@ const originalDocs = {
   onboarding: { name: 'Welcome to Workroom', author: 'Summer Lin', body: '<h2>Your first week</h2><ul><li>Introduce yourself in #team-lounge.</li><li>Confirm this week’s goals with your project lead.</li><li>Explore the knowledge base or ask one of your team’s agents.</li></ul>' }
 };
 let chats = structuredClone(base);
-let docs = structuredClone(originalDocs);
+const documentStorageKey = 'workroom.documents.v1';
+let storageAvailable = true;
+let docs = loadDocuments();
+let documentEditor = null;
+function loadDocuments() {
+  const initial = structuredClone(originalDocs);
+  try {
+    const saved = JSON.parse(localStorage.getItem(documentStorageKey) || 'null');
+    if (saved?.version === 1 && saved.docs && typeof saved.docs === 'object') {
+      for (const [key, doc] of Object.entries(saved.docs)) {
+        if (/^[a-z0-9-]+$/.test(key) && !['constructor', 'prototype'].includes(key) && doc && typeof doc.name === 'string' && typeof doc.body === 'string') {
+          initial[key] = { name: doc.name, body: doc.body, author: typeof doc.author === 'string' ? doc.author : 'Weston Guo', updated: !!doc.updated, updatedAt: typeof doc.updatedAt === 'string' ? doc.updatedAt : null };
+        }
+      }
+    }
+  } catch { storageAvailable = false; }
+  return initial;
+}
+function persistDocuments() {
+  try { localStorage.setItem(documentStorageKey, JSON.stringify({ version: 1, docs })); storageAvailable = true; }
+  catch { storageAvailable = false; }
+  const status = document.querySelector('#save-status');
+  if (status) { status.textContent = storageAvailable ? '✓ Saved in this browser' : 'Not saved · browser storage unavailable'; status.classList.toggle('save-error', !storageAvailable); }
+}
+function updateDocument(key, changes) {
+  docs[key] = { ...docs[key], ...changes, author: 'Weston Guo', updated: true, updatedAt: new Date().toISOString() };
+  persistDocuments();
+}
+function appendAgentDocument(key, nextDoc) {
+  if (docs[key]) {
+    if (!docs[key].body.includes(nextDoc.body)) docs[key] = { ...docs[key], body: docs[key].body + '<hr>' + nextDoc.body, author: nextDoc.author, updated: true, updatedAt: new Date().toISOString() };
+  } else docs[key] = { ...nextDoc, updatedAt: new Date().toISOString() };
+}
 let active = 'product';
 let view = 'chat';
 let selectedDoc = null;
@@ -57,7 +91,7 @@ const avatar = (id, small = false) => {
   const p = person(id);
   return `<span class="avatar ${small ? 'small ' : ''}${p?.agent ? 'agent ' : ''}${id === 'me' ? 'me' : p?.color || ''}">${id === 'me' ? 'W' : p?.initial || 'W'}</span>`;
 };
-const docCard = key => `<button class="doc-card" data-doc="${key}"><span class="doc-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${icons.book}</svg></span><span><strong>${docs[key].name}</strong><small>Team knowledge · ${docs[key].updated ? 'Updated just now' : 'Sep 14'}</small></span></button>`;
+const docCard = key => `<button class="doc-card" data-doc="${key}"><span class="doc-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${icons.book}</svg></span><span><strong>${escapeHTML(docs[key].name || 'Untitled')}</strong><small>Team knowledge · ${docs[key].updatedAt ? new Date(docs[key].updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Sep 14'}</small></span></button>`;
 function saveDraft() {
   if (view === 'chat' && !selectedDoc) drafts[active] = $('#input').value;
 }
@@ -86,6 +120,7 @@ function renderSuggestions() {
   $('.suggestions').innerHTML = '<span>Try asking</span>' + suggestions.map(([label, prompt, target]) => `<button data-prompt="${prompt}" data-target="${target}">${!person(active).agent ? `<span class="prompt-agent ${target}">${person(target).name}</span>` : ''}${label}</button>`).join('');
 }
 function render() {
+  documentEditor?.destroy(); documentEditor = null;
   renderNav();
   const r = person(active), kb = view === 'knowledge';
   $('#header').innerHTML = `<div class="header-main">${kb ? '<span class="channel-symbol">▤</span>' : r.channel ? '<span class="channel-symbol">#</span>' : avatar(r.id)}<div><div class="header-title">${kb ? 'Knowledge' : r.name}${r.agent && !kb ? ' <span class="ai-tag">AI AGENT</span>' : ''}</div><div class="header-sub">${kb ? 'A shared home for your team’s knowledge.' : r.channel ? r.people + ' · ' + r.desc : r.desc}</div></div></div>${!kb && r.channel ? '<div class="member-stack">' + avatar('lin', true) + avatar('chen', true) + avatar('me', true) + '<span>' + r.people + '</span></div>' : ''}`;
@@ -103,11 +138,27 @@ function render() {
   renderSuggestions();
 }
 function renderDocs() {
-  if (selectedDoc && selectedDoc !== 'list' && docs[selectedDoc]) {
-    const doc = docs[selectedDoc];
-    $('#knowledge').innerHTML = `<div class="doc-detail"><button class="back" data-back>← Back to documents</button><h1>${doc.name}</h1><p>Team knowledge · ${doc.author} · ${doc.updated ? 'Updated just now' : 'September 14'}</p>${doc.body}</div>`;
+  documentEditor?.destroy(); documentEditor = null;
+  const editing = selectedDoc && selectedDoc !== 'list' && docs[selectedDoc];
+  $('#knowledge').classList.toggle('editor-view', !!editing);
+  if (editing) {
+    const key = selectedDoc, doc = docs[key];
+    $('#knowledge').innerHTML = `<div class="document-topbar"><button class="doc-breadcrumb" data-back>‹ <span>Team documents</span></button><span class="breadcrumb-separator">/</span><span class="breadcrumb-title">${escapeHTML(doc.name || 'Untitled')}</span><span id="save-status" role="status">${storageAvailable ? '✓ Saved in this browser' : 'Browser storage unavailable'}</span></div>
+      <div class="document-toolbar" id="editor-toolbar" role="toolbar" aria-label="Document formatting">
+        <select id="block-type" aria-label="Text style"><option value="paragraph">Normal text</option><option value="h1">Heading 1</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option></select><span class="toolbar-divider"></span>
+        <button data-format="bold" aria-label="Bold" title="Bold (⌘/Ctrl+B)"><b>B</b></button><button data-format="italic" aria-label="Italic" title="Italic (⌘/Ctrl+I)"><i>I</i></button><button data-format="underline" aria-label="Underline" title="Underline (⌘/Ctrl+U)"><u>U</u></button><button data-format="strike" aria-label="Strikethrough" title="Strikethrough"><s>S</s></button><span class="toolbar-divider"></span>
+        <button data-format="bulletList" aria-label="Bullet list" title="Bullet list">≡<small>•</small></button><button data-format="orderedList" aria-label="Numbered list" title="Numbered list">≡<small>1</small></button><button data-format="blockquote" aria-label="Quote" title="Quote">❝</button><button data-format="codeBlock" aria-label="Code block" title="Code block">&lt;/&gt;</button><span class="toolbar-divider"></span>
+        <button data-history="undo" aria-label="Undo" title="Undo (⌘/Ctrl+Z)">↶</button><button data-history="redo" aria-label="Redo" title="Redo (⌘/Ctrl+Shift+Z)">↷</button>
+      </div>
+      <article class="document-page"><div class="document-page-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${icons.book}</svg></div><textarea id="document-title" aria-label="Document title" placeholder="Untitled" rows="1" spellcheck="true">${escapeHTML(doc.name)}</textarea><div class="document-properties"><span class="property-label">Edited by</span><span id="document-author-avatar">${avatar(rooms.find(r => r.name === doc.author)?.id || 'me', true)}</span><span id="document-author">${escapeHTML(doc.author)}</span><span class="property-dot">·</span><span id="document-date">${doc.updatedAt ? new Date(doc.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Sep 14'}</span></div><div class="document-rule"></div><div id="document-body"></div><div class="document-bottom"><span>Type <kbd>/</kbd> for blocks</span><span id="word-count"></span></div></article><div id="slash-menu" class="slash-menu" role="listbox" aria-label="Insert a block" hidden></div>`;
+    documentEditor = mountDocumentEditor({ element: $('#document-body'), content: doc.body, onChange(body) { updateDocument(key, { body }); $('#document-author').textContent = 'Weston Guo'; $('#document-author-avatar').innerHTML = avatar('me', true); $('#document-date').textContent = 'Just now'; } });
+    const title = $('#document-title');
+    const resizeTitle = () => { title.style.height = 'auto'; title.style.height = title.scrollHeight + 'px'; };
+    resizeTitle();
+    title.addEventListener('input', () => { resizeTitle(); updateDocument(key, { name: title.value.replace(/\n/g, ' ') }); $('.breadcrumb-title').textContent = title.value || 'Untitled'; $('#document-author').textContent = 'Weston Guo'; $('#document-author-avatar').innerHTML = avatar('me', true); $('#document-date').textContent = 'Just now'; });
+    title.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); documentEditor.focus(); } });
   } else {
-    $('#knowledge').innerHTML = '<h1>Team documents</h1><p>Project context and team decisions, all in one place.</p>' + Object.keys(docs).map(docCard).join('');
+    $('#knowledge').innerHTML = `<div class="documents-list"><div class="documents-heading"><div><div class="eyebrow">WORKSPACE</div><h1>Team documents</h1><p>A place for ideas, context, and work in progress.</p></div><button class="new-document" data-new-document>+ New document</button></div><div class="documents-table-heading"><span>Name</span><span>Edited by</span></div>${Object.keys(docs).map(key => `<div class="document-row">${docCard(key)}<span class="document-row-author">${escapeHTML(docs[key].author)}</span></div>`).join('')}<p class="documents-local-note">Edits are saved automatically in this browser.</p></div>`;
   }
 }
 function switchRoom(id) {
@@ -126,15 +177,15 @@ function replyFor(agent, text, scope) {
     const launch = scope === 'launch';
     const key = launch ? 'launch-plan' : 'dev-plan';
     const tasks = launch ? ['Implement the onboarding screens with Summer’s designs.', 'Add a feature flag for the beta release.', 'Check the onboarding flow before next Wednesday.'] : ['Add a persistent search entry point to the channel header.', 'Add a project filter and apply it to the search query.', 'Handle empty results and verify keyboard navigation.'];
-    docs[key] = { name: launch ? 'Beta launch · Implementation plan' : 'Search improvements · Implementation plan', author: 'Dev', updated: true, body: '<h2>Implementation tasks</h2><ul>' + tasks.map(t => '<li>' + t + '</li>').join('') + '</ul><h2>Acceptance criteria</h2><p>' + (launch ? 'A teammate can complete onboarding and enter the beta workspace.' : 'A teammate can open search, choose a project, and find matching messages using the keyboard.') + '</p>' };
+    appendAgentDocument(key, { name: launch ? 'Beta launch · Implementation plan' : 'Search improvements · Implementation plan', author: 'Dev', updated: true, body: '<h2>Implementation tasks</h2><ul>' + tasks.map(t => '<li>' + t + '</li>').join('') + '</ul><h2>Acceptance criteria</h2><p>' + (launch ? 'A teammate can complete onboarding and enter the beta workspace.' : 'A teammate can open search, choose a project, and find matching messages using the keyboard.') + '</p>' });
     return { text: 'I created an implementation plan in the knowledge base.\n\n' + tasks.map((t, i) => (i + 1) + '. ' + t).join('\n'), doc: key };
   }
   if (agent.id === 'design' && /update|requirements|revise/i.test(prompt)) {
     if (scope === 'launch') {
-      docs['launch-design'] = { name: 'Beta onboarding · Design brief', author: 'Design', updated: true, body: '<h2>Scope</h2><p>Prepare onboarding screens for next Wednesday’s beta.</p><h2>Owner and review</h2><p>Summer owns the screens. Review launch copy together tomorrow afternoon.</p>' };
+      appendAgentDocument('launch-design', { name: 'Beta onboarding · Design brief', author: 'Design', updated: true, body: '<h2>Scope</h2><p>Prepare onboarding screens for next Wednesday’s beta.</p><h2>Owner and review</h2><p>Summer owns the screens. Review launch copy together tomorrow afternoon.</p>' });
       return { text: 'I created an onboarding design brief from this channel’s decisions. It covers the beta timeline, Summer’s ownership, and tomorrow’s copy review.', doc: 'launch-design' };
     }
-    docs.requirements = { ...docs.requirements, author: 'Design', updated: true, body: originalDocs.requirements.body + '<h2>Team decisions</h2><p>V1 focuses on the search entry point and project filters. Review the interaction design on Friday.</p><h2>User flow</h2><p>Open search → enter a query → filter by project → open the original message.</p>' };
+    appendAgentDocument('requirements', { name: docs.requirements.name, author: 'Design', updated: true, body: '<h2>Team decisions</h2><p>V1 focuses on the search entry point and project filters. Review the interaction design on Friday.</p><h2>User flow</h2><p>Open search → enter a query → filter by project → open the original message.</p>' });
     return { text: 'I updated the search requirements with the team’s decisions: a visible search entry point, project filtering, and a Friday design review.', doc: 'requirements' };
   }
   if (agent.id === 'design' && /flow|screen|experience|design/i.test(prompt)) return { text: 'Here’s a simple search flow:\n\nOpen search → enter a query → filter by project → open the original message.\n\nKeep the query visible when changing filters, and show a clear empty state when nothing matches.' };
@@ -153,6 +204,7 @@ function send(text) {
     const scope = person(room).channel ? room : 'product';
     chats[room].push({ who: agent.id, ...replyFor(agent, text, scope), time: 'Just now' });
   });
+  persistDocuments();
   render(); $('#messages').scrollTop = $('#messages').scrollHeight; $('#input').focus();
   return { conversation: room, messages: chats[room].length, respondingAgents: recipients.map(a => a.id) };
 }
@@ -165,6 +217,11 @@ function setInput(value) {
   $('#input').value = value; drafts[active] = value; $('#send').disabled = !value.trim(); $('#input').focus();
 }
 document.addEventListener('click', e => {
+  if (e.target.closest('[data-new-document]')) {
+    const key = 'doc-' + crypto.randomUUID();
+    docs[key] = { name: '', body: '<p></p>', author: 'Weston Guo', updated: true, updatedAt: new Date().toISOString() };
+    persistDocuments(); selectedDoc = key; renderDocs(); $('#document-title').focus();
+  }
   const room = e.target.closest('[data-room]'); if (room) switchRoom(room.dataset.room);
   const v = e.target.closest('[data-view]'); if (v) { saveDraft(); view = v.dataset.view; selectedDoc = null; render(); }
   const p = e.target.closest('[data-prompt]');
@@ -195,7 +252,7 @@ $('#input').addEventListener('keydown', e => {
 });
 $('#mention').onclick = () => { if ($('#mention-menu').hidden) showMentions(); else $('#mention-menu').hidden = true; };
 $('#reset').onclick = () => {
-  chats = structuredClone(base); docs = structuredClone(originalDocs);
+  chats = structuredClone(base);
   Object.keys(drafts).forEach(k => delete drafts[k]); active = 'product'; view = 'chat'; selectedDoc = null; render();
 };
 render();
