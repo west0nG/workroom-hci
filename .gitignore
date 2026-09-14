@@ -1,0 +1,4 @@
+.vercel/
+.sites-runtime/
+.DS_Store
+.vercel

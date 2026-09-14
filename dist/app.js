@@ -1,13 +1,215 @@
-const icons={chat:'<path d="M20 11a8 8 0 0 1-8 8H5l-3 2v-9a9 9 0 0 1 18-1Z"/><path d="M7 10h8M7 14h5"/>',book:'<path d="M3 4h7l2 2 2-2h7v15h-7l-2 2-2-2H3Z"/><path d="M12 6v15"/>',send:'<path d="m3 3 18 9-18 9 4-9Z"/><path d="M7 12h14"/>'};document.querySelectorAll('[data-icon]').forEach(e=>e.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true">'+icons[e.dataset.icon]+'</svg>');
-const rooms=[{id:'product',name:'产品设计',desc:'让好的想法，变成好用的产品。',people:'6 位成员',channel:true},{id:'general',name:'团队日常',desc:'团队动态与日常交流',people:'12 位成员',channel:true},{id:'launch',name:'新品发布',desc:'一起准备下一次发布',people:'8 位成员',channel:true},{id:'agent',name:'Agent',desc:'你的 AI 工作伙伴',people:'AI 助手'},{id:'lin',name:'林小夏',desc:'产品设计师',initial:'夏',color:'mint'},{id:'chen',name:'陈默',desc:'前端工程师',initial:'默',color:'peach'}];
-const base={product:[{who:'lin',text:'早上好！昨天的用户访谈整理好了。大家最常提到的是：找到历史消息太费时间。',time:'10:24',doc:'访谈记录'},{who:'chen',text:'收到。我们可以先把搜索入口做得更明显，再补上按项目筛选。',time:'10:26'},{who:'lin',text:'赞同，第一版先聚焦这两个点，周五一起过一下方案。',time:'10:28',reaction:true},{who:'agent',text:'我也在这里。可以 @Agent 让我查资料、整理讨论，或更新团队文档。',time:'10:30'}],general:[{who:'lin',text:'大家下午好，本周团队分享安排在周四 15:00，主题是「让协作更简单」。',time:'14:00'},{who:'chen',text:'收到！我会分享几个前端交互的小实践。',time:'14:03'}],launch:[{who:'chen',text:'新版计划下周三内测，这周需要准备发布文案和新手引导。',time:'09:20'},{who:'lin',text:'我负责新手引导，文案我们明天下午一起定。',time:'09:25'}],agent:[{who:'agent',text:'你好，Weston。今天有什么可以帮你？\n\n你可以让我查找团队资料、总结频道讨论，或更新需求文档。',time:'09:00'}],lin:[{who:'lin',text:'Hi Weston，产品设计频道里有昨天的访谈记录，有空可以看看～',time:'10:25'}],chen:[{who:'chen',text:'搜索交互的方案可以随时发我，我们一起看实现方式。',time:'10:35'}]};
-let chats=structuredClone(base),active='product',view='chat',selectedDoc=null;const drafts={};let updated=false;const $=s=>document.querySelector(s);const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const avatar=(who,small=false)=>{let p=rooms.find(r=>r.id===who);return `<span class="avatar ${small?'small ':''}${who==='agent'?'agent':who==='me'?'me':p?.color||''}">${who==='agent'?'✦':who==='me'?'W':p?.initial||'W'}</span>`};const docName=k=>k==='访谈记录'?'用户访谈记录 · 第 03 期':k==='需求文档'?'搜索体验优化 · 产品需求':'新人入职指南';const docCard=k=>`<button class="doc-card" data-doc="${k}"><span class="doc-icon"><svg viewBox="0 0 24 24">${icons.book}</svg></span><span><strong>${docName(k)}</strong><small>产品知识库 · ${k==='需求文档'&&updated?'刚刚更新':'9 月 14 日更新'}</small></span></button>`;
-function nav(){['channels','direct'].forEach((id,i)=>$('#'+id).innerHTML=rooms.filter(r=>!!r.channel===!i).map(r=>`<button class="conversation ${r.id===active&&view==='chat'?'selected':''}" data-room="${r.id}">${r.channel?'<span class="hash">#</span>':avatar(r.id,true)}<span>${r.name}</span>${r.id==='agent'?'<span class="badge">AI</span>':''}</button>`).join(''));document.querySelectorAll('.rail-item').forEach(e=>e.classList.toggle('active',e.dataset.view===view))}
-function render(){nav();let r=rooms.find(r=>r.id===active),kb=view==='knowledge';$('#header').innerHTML=`<div class="header-main">${kb?'<span class="channel-symbol">▤</span>':r.channel?'<span class="channel-symbol">#</span>':avatar(r.id)}<div><div class="header-title">${kb?'知识库':r.name}${r.id==='agent'&&!kb?' <span class="ai-tag">AI</span>':''}</div><div class="header-sub">${kb?'团队知识，随时可用':r.channel?r.people+' · '+r.desc:r.desc}</div></div></div>${!kb&&r.channel?'<div class="member-stack">'+avatar('lin',true)+avatar('chen',true)+avatar('me',true)+'<span>'+r.people+'</span></div>':''}`;$('#tabs').innerHTML=kb?'':`<button class="tab ${!selectedDoc?'active':''}" data-tab="chat">消息</button><button class="tab ${selectedDoc?'active':''}" data-tab="docs">共享文档</button>`;$('#tabs').hidden=kb;$('#messages').hidden=kb||!!selectedDoc;$('#compose-area').hidden=kb||!!selectedDoc;$('#knowledge').hidden=!kb&&!selectedDoc;
-if(kb||selectedDoc){renderDocs();return}$('#messages').innerHTML=`${r.channel?`<div class="channel-intro"><h1># ${r.name}</h1><p>${r.desc}</p></div>`:''}<div class="date-divider">今天 · 9 月 14 日</div>`+chats[active].map((m,i)=>`<article class="message">${avatar(m.who)}<div class="message-content"><div class="message-meta"><strong>${m.who==='me'?'Weston Guo':rooms.find(r=>r.id===m.who)?.name}</strong>${m.who==='agent'?'<span class="ai-tag">AI</span>':''}<time>${m.time}</time></div><div class="message-text">${esc(m.text).replace(/@Agent/g,'<span class="mention-text">@Agent</span>')}</div>${m.doc?docCard(m.doc):''}${m.reaction?`<button class="reaction ${m.liked?'on':''}" data-reaction="${i}" aria-label="赞同" aria-pressed="${!!m.liked}">👍 ${m.liked?3:2}</button>`:''}</div></article>`).join('');$('#input').placeholder=active==='agent'?'给 Agent 发消息…':'发送消息，输入 @ 呼叫 Agent';$('#input').value=drafts[active]||'';$('#send').disabled=!$('#input').value.trim();$('#mention-menu').hidden=true;}
-function renderDocs(){if(selectedDoc&&selectedDoc!=='list'){$('#knowledge').innerHTML=`<div class="doc-detail"><button class="back" data-back>← 返回文档</button><h1>${docName(selectedDoc)}</h1><p>产品知识库 · ${updated&&selectedDoc==='需求文档'?'Agent 刚刚更新':'林小夏 · 9 月 14 日'}</p>${selectedDoc==='访谈记录'?'<h2>访谈主题</h2><p>团队成员如何查找历史消息与项目资料。</p><h2>主要发现</h2><ul><li>搜索入口不够明显，用户需要多次寻找。</li><li>跨项目的消息混杂，定位历史讨论耗时。</li><li>用户希望按项目筛选结果。</li></ul>':selectedDoc==='需求文档'?'<h2>项目目标</h2><p>降低团队查找历史消息的时间成本。</p><h2>第一版范围</h2><ul><li>优化搜索入口的可见性。</li><li>支持按项目筛选搜索结果。</li></ul>'+(updated?'<h2>讨论结论</h2><p>第一版聚焦搜索入口与项目筛选，周五评审交互方案。</p>':''):'<h2>欢迎加入 Workroom</h2><ul><li>在「团队日常」频道介绍自己。</li><li>与项目负责人确认本周目标。</li><li>在知识库查找团队资料，也可以直接询问 Agent。</li></ul>'}</div>`}else $('#knowledge').innerHTML='<h1>团队文档</h1><p>项目资料与团队共识，都在这里。</p>'+['需求文档','访谈记录','入职指南'].map(docCard).join('')}
-function switchRoom(id){if(!rooms.some(r=>r.id===id))throw Error('Unknown conversation');drafts[active]=$('#input').value;active=id;view='chat';selectedDoc=null;render()}
-function send(text){text=text.trim();if(!text)return;const room=active;chats[room].push({who:'me',text,time:new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'})});drafts[room]='';if(room==='agent'||/@agent/i.test(text)){let reply,doc;const scope=room==='agent'?'product':room;if(/更新|修改|需求/.test(text)){if(scope==='product'){updated=true;reply='已根据产品设计频道的讨论更新需求文档：第一版聚焦搜索入口优化与按项目筛选，周五评审方案。';doc='需求文档'}else reply='当前演示支持更新「产品设计」频道的搜索体验需求。你可以在产品设计频道试试「更新需求文档」。'}else if(/总结|整理|讨论/.test(text)){reply=scope==='general'?'团队讨论摘要：\n1. 周四 15:00 进行团队分享，主题为「让协作更简单」。\n2. 陈默会分享前端交互实践。':scope==='launch'?'新品发布讨论摘要：\n1. 新版计划下周三内测。\n2. 本周准备发布文案和新手引导。\n3. 林小夏负责引导，明天下午一起确定文案。':'产品设计讨论摘要：\n1. 用户查找历史消息比较费时。\n2. 第一版优先优化搜索入口，支持按项目筛选。\n3. 周五一起评审交互方案。'}else if(/查|资料|访谈|知识|文档/.test(text)){reply='找到了相关资料。用户访谈中最主要的反馈是：历史消息难找，希望有更明显的搜索入口和项目筛选。';doc='访谈记录'}else reply='这个原型支持三类演示任务：总结频道讨论、查找访谈记录、更新产品需求文档。可以直接告诉我你想做哪一个。';chats[room].push({who:'agent',text:reply,doc,time:'刚刚'})}render();$('#messages').scrollTop=$('#messages').scrollHeight;$('#input').focus();return {conversation:room,messages:chats[room].length}}
-document.addEventListener('click',e=>{const room=e.target.closest('[data-room]');if(room)switchRoom(room.dataset.room);const v=e.target.closest('[data-view]');if(v){drafts[active]=$('#input').value;view=v.dataset.view;selectedDoc=null;render()}const p=e.target.closest('[data-prompt]');if(p){$('#input').value=(active==='agent'?'':'@Agent ')+p.dataset.prompt;drafts[active]=$('#input').value;$('#send').disabled=false;$('#input').focus()}const doc=e.target.closest('[data-doc]');if(doc){selectedDoc=doc.dataset.doc;render()}const tab=e.target.closest('[data-tab]');if(tab){selectedDoc=tab.dataset.tab==='docs'?'list':null;render()}if(e.target.closest('[data-back]')){selectedDoc='list';renderDocs()}const react=e.target.closest('[data-reaction]');if(react){const m=chats[active][Number(react.dataset.reaction)];m.liked=!m.liked;render()}});
-$('#composer').addEventListener('submit',e=>{e.preventDefault();send($('#input').value)});$('#input').addEventListener('input',()=>{drafts[active]=$('#input').value;$('#send').disabled=!$('#input').value.trim();$('#mention-menu').hidden=!/@$/.test($('#input').value)});$('#input').addEventListener('keydown',e=>{if(e.key==='Escape')$('#mention-menu').hidden=true;if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();send($('#input').value)}});$('#mention').onclick=()=>{$('#mention-menu').hidden=!$('#mention-menu').hidden};$('#pick-agent').onclick=()=>{$('#input').value=$('#input').value.replace(/@$/,'')+'@Agent ';drafts[active]=$('#input').value;$('#mention-menu').hidden=true;$('#send').disabled=false;$('#input').focus()};$('#reset').onclick=()=>{chats=structuredClone(base);updated=false;for(const k in drafts)delete drafts[k];active='product';view='chat';selectedDoc=null;render()};
-render();if(document.modelContext?.registerTool){try{Promise.resolve(document.modelContext.registerTool({name:'send_demo_message',description:'Send a message in a prototype conversation. Agent responses and document updates use local demo data only.',inputSchema:{type:'object',properties:{conversation:{type:'string',enum:rooms.map(r=>r.id)},message:{type:'string',minLength:1}},required:['conversation','message'],additionalProperties:false},annotations:{readOnlyHint:false},execute(input){if(!input||typeof input.message!=='string'||!input.message.trim()||!rooms.some(r=>r.id===input.conversation))throw Error('Valid conversation and nonempty message required');switchRoom(input.conversation);return send(input.message)}})).catch(()=>{})}catch{}}
+const icons = {
+  chat: '<path d="M20 11a8 8 0 0 1-8 8H5l-3 2v-9a9 9 0 0 1 18-1Z"/><path d="M7 10h8M7 14h5"/>',
+  book: '<path d="M3 4h7l2 2 2-2h7v15h-7l-2 2-2-2H3Z"/><path d="M12 6v15"/>',
+  send: '<path d="m3 3 18 9-18 9 4-9Z"/><path d="M7 12h14"/>'
+};
+document.querySelectorAll('[data-icon]').forEach(el => {
+  el.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[el.dataset.icon]}</svg>`;
+});
+const rooms = [
+  { id: 'product', name: 'product-design', desc: 'Turning good ideas into useful products.', people: '6 members', channel: true },
+  { id: 'general', name: 'team-lounge', desc: 'Updates, ideas, and everyday conversations.', people: '12 members', channel: true },
+  { id: 'launch', name: 'next-launch', desc: 'Getting ready for our next release.', people: '8 members', channel: true },
+  { id: 'dev', name: 'Dev', desc: 'Engineering · implementation plans and technical docs', agent: true, color: 'dev', initial: '⌘' },
+  { id: 'design', name: 'Design', desc: 'Product design · user flows and requirements', agent: true, color: 'design', initial: '◈' },
+  { id: 'research', name: 'Research', desc: 'User research · insights and team knowledge', agent: true, color: 'research', initial: '✳' },
+  { id: 'lin', name: 'Summer Lin', desc: 'Product designer', initial: 'SL', color: 'mint' },
+  { id: 'chen', name: 'Alex Chen', desc: 'Frontend engineer', initial: 'AC', color: 'peach' }
+];
+const agents = rooms.filter(r => r.agent);
+const base = {
+  product: [
+    { who: 'lin', text: 'Morning! The interview notes are ready. The biggest pain point: finding old messages takes too long.', time: '10:24', doc: 'interviews' },
+    { who: 'chen', text: 'Makes sense. Let’s make search easier to find and add a project filter.', time: '10:26' },
+    { who: 'lin', text: 'Agreed. Let’s focus on those two things for v1 and review the designs on Friday.', time: '10:28', reaction: true },
+    { who: 'me', text: '@Research What did we learn from the interviews?', time: '10:30' },
+    { who: 'research', text: 'Two recurring themes: people miss the search entry point, and results from different projects get mixed together. A more visible search field and project filters address both.', time: '10:30' }
+  ],
+  general: [
+    { who: 'lin', text: 'Our team share is Thursday at 3 PM. This week’s topic: making collaboration simpler.', time: '14:00' },
+    { who: 'chen', text: 'I’ll bring a few examples of small frontend interactions that make a difference.', time: '14:03' }
+  ],
+  launch: [
+    { who: 'chen', text: 'The beta is scheduled for next Wednesday. We need launch copy and onboarding screens this week.', time: '09:20' },
+    { who: 'lin', text: 'I’ll take the onboarding screens. Let’s review the copy together tomorrow afternoon.', time: '09:25' }
+  ],
+  dev: [{ who: 'dev', text: 'Hi Weston. I’m Dev, your engineering teammate.\n\nAsk me to turn the product discussion into an implementation plan or find technical requirements.', time: '09:00' }],
+  design: [{ who: 'design', text: 'Hi Weston. I’m Design. I help turn team decisions into clear product experiences.\n\nI can outline a user flow or update the search requirements from the product discussion.', time: '09:00' }],
+  research: [{ who: 'research', text: 'Hi Weston. I’m Research. I help your team find and make sense of what it knows.\n\nAsk me to find interview notes, summarize a discussion, or pull out user insights.', time: '09:00' }],
+  lin: [{ who: 'lin', text: 'Hi Weston! Yesterday’s interview notes are in #product-design whenever you have a moment.', time: '10:25' }],
+  chen: [{ who: 'chen', text: 'Send me the search flow whenever it’s ready. Happy to talk through the implementation.', time: '10:35' }]
+};
+const originalDocs = {
+  interviews: { name: 'User interviews · Round 03', author: 'Summer Lin', body: '<h2>Research question</h2><p>How do teammates find past messages and project information?</p><h2>Key findings</h2><ul><li>The search entry point is easy to miss.</li><li>Results from different projects make old discussions hard to find.</li><li>People want to filter results by project.</li></ul>' },
+  requirements: { name: 'Search experience · Product requirements', author: 'Summer Lin', body: '<h2>Goal</h2><p>Reduce the time it takes to find past messages.</p><h2>Initial scope</h2><ul><li>Improve visibility of the search entry point.</li><li>Support filtering search results by project.</li></ul>' },
+  onboarding: { name: 'Welcome to Workroom', author: 'Summer Lin', body: '<h2>Your first week</h2><ul><li>Introduce yourself in #team-lounge.</li><li>Confirm this week’s goals with your project lead.</li><li>Explore the knowledge base or ask one of your team’s agents.</li></ul>' }
+};
+let chats = structuredClone(base);
+let docs = structuredClone(originalDocs);
+let active = 'product';
+let view = 'chat';
+let selectedDoc = null;
+const drafts = {};
+const $ = s => document.querySelector(s);
+const person = id => rooms.find(r => r.id === id);
+const escapeHTML = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const avatar = (id, small = false) => {
+  const p = person(id);
+  return `<span class="avatar ${small ? 'small ' : ''}${p?.agent ? 'agent ' : ''}${id === 'me' ? 'me' : p?.color || ''}">${id === 'me' ? 'W' : p?.initial || 'W'}</span>`;
+};
+const docCard = key => `<button class="doc-card" data-doc="${key}"><span class="doc-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${icons.book}</svg></span><span><strong>${docs[key].name}</strong><small>Team knowledge · ${docs[key].updated ? 'Updated just now' : 'Sep 14'}</small></span></button>`;
+function saveDraft() {
+  if (view === 'chat' && !selectedDoc) drafts[active] = $('#input').value;
+}
+function renderNav() {
+  const groups = { channels: r => r.channel, agents: r => r.agent, direct: r => !r.channel && !r.agent };
+  Object.entries(groups).forEach(([id, filter]) => {
+    $('#' + id).innerHTML = rooms.filter(filter).map(r => `<button class="conversation ${r.id === active && view === 'chat' ? 'selected' : ''}" data-room="${r.id}" aria-current="${r.id === active && view === 'chat' ? 'page' : 'false'}">${r.channel ? '<span class="hash">#</span>' : avatar(r.id, true)}<span>${r.name}</span>${r.agent ? '<span class="badge">AI</span>' : ''}</button>`).join('');
+  });
+  document.querySelectorAll('.rail-item').forEach(el => el.classList.toggle('active', el.dataset.view === view));
+}
+function renderSuggestions() {
+  const suggestions = active === 'dev' ? [
+    ['Create implementation plan', 'Create an implementation plan for the search improvements', 'dev'],
+    ['Find requirements', 'Find the search requirements', 'dev']
+  ] : active === 'design' ? [
+    ['Update requirements', 'Update the search requirements from the product discussion', 'design'],
+    ['Outline user flow', 'Outline the search user flow', 'design']
+  ] : active === 'research' ? [
+    ['Find interviews', 'Find user interview notes', 'research'],
+    ['Summarize discussion', 'Summarize the product discussion', 'research']
+  ] : [
+    ['Summarize discussion', 'Summarize this channel', 'research'],
+    ['Create dev plan', 'Create an implementation plan', 'dev'],
+    ['Update requirements', 'Update requirements from this discussion', 'design']
+  ];
+  $('.suggestions').innerHTML = '<span>Try asking</span>' + suggestions.map(([label, prompt, target]) => `<button data-prompt="${prompt}" data-target="${target}">${!person(active).agent ? `<span class="prompt-agent ${target}">${person(target).name}</span>` : ''}${label}</button>`).join('');
+}
+function render() {
+  renderNav();
+  const r = person(active), kb = view === 'knowledge';
+  $('#header').innerHTML = `<div class="header-main">${kb ? '<span class="channel-symbol">▤</span>' : r.channel ? '<span class="channel-symbol">#</span>' : avatar(r.id)}<div><div class="header-title">${kb ? 'Knowledge' : r.name}${r.agent && !kb ? ' <span class="ai-tag">AI AGENT</span>' : ''}</div><div class="header-sub">${kb ? 'A shared home for your team’s knowledge.' : r.channel ? r.people + ' · ' + r.desc : r.desc}</div></div></div>${!kb && r.channel ? '<div class="member-stack">' + avatar('lin', true) + avatar('chen', true) + avatar('me', true) + '<span>' + r.people + '</span></div>' : ''}`;
+  $('#tabs').innerHTML = kb ? '' : `<button class="tab ${!selectedDoc ? 'active' : ''}" data-tab="chat">Messages</button><button class="tab ${selectedDoc ? 'active' : ''}" data-tab="docs">Shared docs</button>`;
+  $('#tabs').hidden = kb;
+  $('#messages').hidden = kb || !!selectedDoc;
+  $('#compose-area').hidden = kb || !!selectedDoc;
+  $('#knowledge').hidden = !kb && !selectedDoc;
+  $('#mention-menu').hidden = true;
+  if (kb || selectedDoc) { renderDocs(); return; }
+  $('#messages').innerHTML = `${r.channel ? `<div class="channel-intro"><h1># ${r.name}</h1><p>${r.desc}</p></div>` : ''}<div class="date-divider">Today · September 14</div>` + chats[active].map((m, i) => `<article class="message" data-author="${m.who}">${avatar(m.who)}<div class="message-content"><div class="message-meta"><strong>${m.who === 'me' ? 'Weston Guo' : person(m.who)?.name}</strong>${person(m.who)?.agent ? '<span class="ai-tag">AI</span>' : ''}<time>${m.time}</time></div><div class="message-text">${escapeHTML(m.text).replace(/@(Dev|Design|Research)\b/gi, '<span class="mention-text">@$1</span>')}</div>${m.doc ? docCard(m.doc) : ''}${m.reaction ? `<button class="reaction ${m.liked ? 'on' : ''}" data-reaction="${i}" aria-label="Agree" aria-pressed="${!!m.liked}">👍 ${m.liked ? 3 : 2}</button>` : ''}</div></article>`).join('');
+  $('#input').placeholder = r.agent ? `Message ${r.name}…` : `Message ${r.channel ? '#' : ''}${r.name}. Type @ to mention an agent.`;
+  $('#input').value = drafts[active] || '';
+  $('#send').disabled = !$('#input').value.trim();
+  renderSuggestions();
+}
+function renderDocs() {
+  if (selectedDoc && selectedDoc !== 'list' && docs[selectedDoc]) {
+    const doc = docs[selectedDoc];
+    $('#knowledge').innerHTML = `<div class="doc-detail"><button class="back" data-back>← Back to documents</button><h1>${doc.name}</h1><p>Team knowledge · ${doc.author} · ${doc.updated ? 'Updated just now' : 'September 14'}</p>${doc.body}</div>`;
+  } else {
+    $('#knowledge').innerHTML = '<h1>Team documents</h1><p>Project context and team decisions, all in one place.</p>' + Object.keys(docs).map(docCard).join('');
+  }
+}
+function switchRoom(id) {
+  if (!person(id)) throw Error('Unknown conversation');
+  saveDraft(); active = id; view = 'chat'; selectedDoc = null; render();
+}
+function summarize(scope) {
+  if (scope === 'general') return 'Here’s the discussion summary:\n1. Team share: Thursday at 3 PM, on making collaboration simpler.\n2. Alex will share examples of frontend interactions.';
+  if (scope === 'launch') return 'Here’s the discussion summary:\n1. The beta is scheduled for next Wednesday.\n2. Launch copy and onboarding screens are needed this week.\n3. Summer owns onboarding; copy review is tomorrow afternoon.';
+  return 'Here’s the product discussion summary:\n1. Finding old messages takes too long.\n2. V1 will focus on a more visible search entry point and project filters.\n3. The team will review designs on Friday.';
+}
+function replyFor(agent, text, scope) {
+  const prompt = text.replace(/@(Dev|Design|Research)\b/gi, '').trim();
+  if (/summari[sz]e|summary|recap/i.test(prompt)) return { text: summarize(scope) };
+  if (agent.id === 'dev' && /plan|implement|build|code|develop|task/i.test(prompt)) {
+    const launch = scope === 'launch';
+    const key = launch ? 'launch-plan' : 'dev-plan';
+    const tasks = launch ? ['Implement the onboarding screens with Summer’s designs.', 'Add a feature flag for the beta release.', 'Check the onboarding flow before next Wednesday.'] : ['Add a persistent search entry point to the channel header.', 'Add a project filter and apply it to the search query.', 'Handle empty results and verify keyboard navigation.'];
+    docs[key] = { name: launch ? 'Beta launch · Implementation plan' : 'Search improvements · Implementation plan', author: 'Dev', updated: true, body: '<h2>Implementation tasks</h2><ul>' + tasks.map(t => '<li>' + t + '</li>').join('') + '</ul><h2>Acceptance criteria</h2><p>' + (launch ? 'A teammate can complete onboarding and enter the beta workspace.' : 'A teammate can open search, choose a project, and find matching messages using the keyboard.') + '</p>' };
+    return { text: 'I created an implementation plan in the knowledge base.\n\n' + tasks.map((t, i) => (i + 1) + '. ' + t).join('\n'), doc: key };
+  }
+  if (agent.id === 'design' && /update|requirements|revise/i.test(prompt)) {
+    if (scope === 'launch') {
+      docs['launch-design'] = { name: 'Beta onboarding · Design brief', author: 'Design', updated: true, body: '<h2>Scope</h2><p>Prepare onboarding screens for next Wednesday’s beta.</p><h2>Owner and review</h2><p>Summer owns the screens. Review launch copy together tomorrow afternoon.</p>' };
+      return { text: 'I created an onboarding design brief from this channel’s decisions. It covers the beta timeline, Summer’s ownership, and tomorrow’s copy review.', doc: 'launch-design' };
+    }
+    docs.requirements = { ...docs.requirements, author: 'Design', updated: true, body: originalDocs.requirements.body + '<h2>Team decisions</h2><p>V1 focuses on the search entry point and project filters. Review the interaction design on Friday.</p><h2>User flow</h2><p>Open search → enter a query → filter by project → open the original message.</p>' };
+    return { text: 'I updated the search requirements with the team’s decisions: a visible search entry point, project filtering, and a Friday design review.', doc: 'requirements' };
+  }
+  if (agent.id === 'design' && /flow|screen|experience|design/i.test(prompt)) return { text: 'Here’s a simple search flow:\n\nOpen search → enter a query → filter by project → open the original message.\n\nKeep the query visible when changing filters, and show a clear empty state when nothing matches.' };
+  if (/requirements|technical/i.test(prompt)) return { text: 'Here are the search requirements. V1 focuses on a visible search entry point and filtering results by project.', doc: 'requirements' };
+  if (/find|interview|research|insight|learn|knowledge|notes/i.test(prompt)) return { text: 'The interview notes point to two main problems: search is easy to miss, and results from different projects get mixed together. People want a clearer entry point and a project filter.', doc: 'interviews' };
+  return { text: agent.id === 'dev' ? 'In this prototype, I can create an implementation plan or find the search requirements. Try “Create an implementation plan”.' : agent.id === 'design' ? 'In this prototype, I can update the search requirements or outline a user flow. Try “Update requirements”.' : 'In this prototype, I can find interview notes or summarize a channel. Try “Find user interview notes”.' };
+}
+function send(text) {
+  text = text.trim(); if (!text) return;
+  const room = active;
+  chats[room].push({ who: 'me', text, time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) });
+  drafts[room] = '';
+  const mentioned = agents.filter(a => new RegExp('@' + a.name + '\\b', 'i').test(text));
+  const recipients = mentioned.length ? mentioned : person(room).agent ? [person(room)] : [];
+  recipients.forEach(agent => {
+    const scope = person(room).channel ? room : 'product';
+    chats[room].push({ who: agent.id, ...replyFor(agent, text, scope), time: 'Just now' });
+  });
+  render(); $('#messages').scrollTop = $('#messages').scrollHeight; $('#input').focus();
+  return { conversation: room, messages: chats[room].length, respondingAgents: recipients.map(a => a.id) };
+}
+function showMentions(query = '') {
+  const matches = agents.filter(a => a.name.toLowerCase().startsWith(query.toLowerCase()));
+  $('#mention-menu').innerHTML = matches.map(a => `<button type="button" class="pick-agent" data-mention="${a.id}">${avatar(a.id, true)}<span><strong>${a.name}</strong><small>${a.desc.split(' · ')[0]}</small></span><span class="badge">AI</span></button>`).join('');
+  $('#mention-menu').hidden = !matches.length;
+}
+function setInput(value) {
+  $('#input').value = value; drafts[active] = value; $('#send').disabled = !value.trim(); $('#input').focus();
+}
+document.addEventListener('click', e => {
+  const room = e.target.closest('[data-room]'); if (room) switchRoom(room.dataset.room);
+  const v = e.target.closest('[data-view]'); if (v) { saveDraft(); view = v.dataset.view; selectedDoc = null; render(); }
+  const p = e.target.closest('[data-prompt]');
+  if (p) setInput((person(active).agent ? '' : '@' + person(p.dataset.target).name + ' ') + p.dataset.prompt);
+  const doc = e.target.closest('[data-doc]'); if (doc) { saveDraft(); selectedDoc = doc.dataset.doc; render(); }
+  const tab = e.target.closest('[data-tab]'); if (tab) { saveDraft(); selectedDoc = tab.dataset.tab === 'docs' ? 'list' : null; render(); }
+  if (e.target.closest('[data-back]')) { selectedDoc = 'list'; renderDocs(); }
+  const reaction = e.target.closest('[data-reaction]'); if (reaction) { saveDraft(); const m = chats[active][Number(reaction.dataset.reaction)]; m.liked = !m.liked; render(); }
+  const mention = e.target.closest('[data-mention]');
+  if (mention) { setInput($('#input').value.replace(/@[a-z]*$/i, '') + '@' + person(mention.dataset.mention).name + ' '); $('#mention-menu').hidden = true; }
+  if (!e.target.closest('#composer')) $('#mention-menu').hidden = true;
+});
+$('#composer').addEventListener('submit', e => { e.preventDefault(); send($('#input').value); });
+$('#input').addEventListener('input', () => {
+  drafts[active] = $('#input').value; $('#send').disabled = !$('#input').value.trim();
+  const match = $('#input').value.match(/@([a-z]*)$/i);
+  if (match) showMentions(match[1]); else $('#mention-menu').hidden = true;
+});
+$('#input').addEventListener('keydown', e => {
+  if (e.key === 'Escape') $('#mention-menu').hidden = true;
+  if (e.key === 'ArrowDown' && !$('#mention-menu').hidden) { e.preventDefault(); $('#mention-menu button')?.focus(); }
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    const match = $('#input').value.match(/@([a-z]*)$/i);
+    if (!$('#mention-menu').hidden && match && !agents.some(a => a.name.toLowerCase() === match[1].toLowerCase())) $('#mention-menu button')?.click();
+    else send($('#input').value);
+  }
+});
+$('#mention').onclick = () => { if ($('#mention-menu').hidden) showMentions(); else $('#mention-menu').hidden = true; };
+$('#reset').onclick = () => {
+  chats = structuredClone(base); docs = structuredClone(originalDocs);
+  Object.keys(drafts).forEach(k => delete drafts[k]); active = 'product'; view = 'chat'; selectedDoc = null; render();
+};
+render();
+if (document.modelContext?.registerTool) {
+  try {
+    Promise.resolve(document.modelContext.registerTool({
+      name: 'send_demo_message',
+      description: 'Send a message to a prototype conversation. Mention @Dev, @Design, or @Research in channels, or message an agent directly. Uses simulated responses and sample documents.',
+      inputSchema: { type: 'object', properties: { conversation: { type: 'string', enum: rooms.map(r => r.id) }, message: { type: 'string', minLength: 1 } }, required: ['conversation', 'message'], additionalProperties: false },
+      annotations: { readOnlyHint: false },
+      execute(input) {
+        if (!input || typeof input.message !== 'string' || !input.message.trim() || !person(input.conversation)) throw Error('Valid conversation and nonempty message required');
+        switchRoom(input.conversation); return send(input.message);
+      }
+    })).catch(() => {});
+  } catch {}
+}
