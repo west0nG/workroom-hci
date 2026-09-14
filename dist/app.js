@@ -12,13 +12,14 @@ const rooms = [
   { id: 'product', name: 'product-design', desc: 'Turning good ideas into useful products.', people: '6 members', channel: true },
   { id: 'general', name: 'team-lounge', desc: 'Updates, ideas, and everyday conversations.', people: '12 members', channel: true },
   { id: 'launch', name: 'next-launch', desc: 'Getting ready for our next release.', people: '8 members', channel: true },
-  { id: 'dev', name: 'Dev', desc: 'Engineering · implementation plans and technical docs', agent: true, color: 'dev', initial: '⌘' },
-  { id: 'design', name: 'Design', desc: 'Product design · user flows and requirements', agent: true, color: 'design', initial: '◈' },
-  { id: 'research', name: 'Research', desc: 'User research · insights and team knowledge', agent: true, color: 'research', initial: '✳' },
+  { id: 'dev', name: 'Dev', desc: 'Engineering · implementation plans and technical docs', agent: true, color: 'dev', initial: 'DV' },
+  { id: 'design', name: 'Design', desc: 'Product design · user flows and requirements', agent: true, color: 'design', initial: 'DS' },
+  { id: 'research', name: 'Research', desc: 'User research · insights and team knowledge', agent: true, color: 'research', initial: 'RS' },
   { id: 'lin', name: 'Summer Lin', desc: 'Product designer', initial: 'SL', color: 'mint' },
   { id: 'chen', name: 'Alex Chen', desc: 'Frontend engineer', initial: 'AC', color: 'peach' }
 ];
 const agents = rooms.filter(r => r.agent);
+const coworkers = ['lin', 'dev', 'chen', 'design', 'research'].map(id => rooms.find(r => r.id === id));
 const base = {
   product: [
     { who: 'lin', text: 'Morning! The interview notes are ready. The biggest pain point: finding old messages takes too long.', time: '10:24', doc: 'interviews' },
@@ -44,7 +45,7 @@ const base = {
 const originalDocs = {
   interviews: { name: 'User interviews · Round 03', author: 'Summer Lin', body: '<h2>Research question</h2><p>How do teammates find past messages and project information?</p><h2>Key findings</h2><ul><li>The search entry point is easy to miss.</li><li>Results from different projects make old discussions hard to find.</li><li>People want to filter results by project.</li></ul>' },
   requirements: { name: 'Search experience · Product requirements', author: 'Summer Lin', body: '<h2>Goal</h2><p>Reduce the time it takes to find past messages.</p><h2>Initial scope</h2><ul><li>Improve visibility of the search entry point.</li><li>Support filtering search results by project.</li></ul>' },
-  onboarding: { name: 'Welcome to Workroom', author: 'Summer Lin', body: '<h2>Your first week</h2><ul><li>Introduce yourself in #team-lounge.</li><li>Confirm this week’s goals with your project lead.</li><li>Explore the knowledge base or ask one of your team’s agents.</li></ul>' }
+  onboarding: { name: 'Welcome to Workroom', author: 'Summer Lin', body: '<h2>Your first week</h2><ul><li>Introduce yourself in #team-lounge.</li><li>Confirm this week’s goals with your project lead.</li><li>Explore the knowledge base or ask a coworker.</li></ul>' }
 };
 let chats = structuredClone(base);
 const documentStorageKey = 'workroom.documents.v1';
@@ -89,16 +90,16 @@ const person = id => rooms.find(r => r.id === id);
 const escapeHTML = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const avatar = (id, small = false) => {
   const p = person(id);
-  return `<span class="avatar ${small ? 'small ' : ''}${p?.agent ? 'agent ' : ''}${id === 'me' ? 'me' : p?.color || ''}">${id === 'me' ? 'W' : p?.initial || 'W'}</span>`;
+  return `<span class="avatar ${small ? 'small ' : ''}${id === 'me' ? 'me' : p?.color || ''}">${id === 'me' ? 'W' : p?.initial || 'W'}</span>`;
 };
 const docCard = key => `<button class="doc-card" data-doc="${key}"><span class="doc-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${icons.book}</svg></span><span><strong>${escapeHTML(docs[key].name || 'Untitled')}</strong><small>Team knowledge · ${docs[key].updatedAt ? new Date(docs[key].updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Sep 14'}</small></span></button>`;
 function saveDraft() {
   if (view === 'chat' && !selectedDoc) drafts[active] = $('#input').value;
 }
 function renderNav() {
-  const groups = { channels: r => r.channel, agents: r => r.agent, direct: r => !r.channel && !r.agent };
-  Object.entries(groups).forEach(([id, filter]) => {
-    $('#' + id).innerHTML = rooms.filter(filter).map(r => `<button class="conversation ${r.id === active && view === 'chat' ? 'selected' : ''}" data-room="${r.id}" aria-current="${r.id === active && view === 'chat' ? 'page' : 'false'}">${r.channel ? '<span class="hash">#</span>' : avatar(r.id, true)}<span>${r.name}</span>${r.agent ? '<span class="badge">AI</span>' : ''}</button>`).join('');
+  const groups = { channels: rooms.filter(r => r.channel), direct: coworkers };
+  Object.entries(groups).forEach(([id, members]) => {
+    $('#' + id).innerHTML = members.map(r => `<button class="conversation ${r.id === active && view === 'chat' ? 'selected' : ''}" data-room="${r.id}" aria-current="${r.id === active && view === 'chat' ? 'page' : 'false'}">${r.channel ? '<span class="hash">#</span>' : avatar(r.id, true)}<span>${r.name}</span></button>`).join('');
   });
   document.querySelectorAll('.rail-item').forEach(el => el.classList.toggle('active', el.dataset.view === view));
 }
@@ -123,7 +124,7 @@ function render() {
   documentEditor?.destroy(); documentEditor = null;
   renderNav();
   const r = person(active), kb = view === 'knowledge';
-  $('#header').innerHTML = `<div class="header-main">${kb ? '<span class="channel-symbol">▤</span>' : r.channel ? '<span class="channel-symbol">#</span>' : avatar(r.id)}<div><div class="header-title">${kb ? 'Knowledge' : r.name}${r.agent && !kb ? ' <span class="ai-tag">AI AGENT</span>' : ''}</div><div class="header-sub">${kb ? 'A shared home for your team’s knowledge.' : r.channel ? r.people + ' · ' + r.desc : r.desc}</div></div></div>${!kb && r.channel ? '<div class="member-stack">' + avatar('lin', true) + avatar('chen', true) + avatar('me', true) + '<span>' + r.people + '</span></div>' : ''}`;
+  $('#header').innerHTML = `<div class="header-main">${kb ? '<span class="channel-symbol">▤</span>' : r.channel ? '<span class="channel-symbol">#</span>' : avatar(r.id)}<div><div class="header-title">${kb ? 'Knowledge' : r.name}</div><div class="header-sub">${kb ? 'A shared home for your team’s knowledge.' : r.channel ? r.people + ' · ' + r.desc : r.desc}</div></div></div>${!kb && r.channel ? '<div class="member-stack">' + avatar('lin', true) + avatar('chen', true) + avatar('me', true) + '<span>' + r.people + '</span></div>' : ''}`;
   $('#tabs').innerHTML = kb ? '' : `<button class="tab ${!selectedDoc ? 'active' : ''}" data-tab="chat">Messages</button><button class="tab ${selectedDoc ? 'active' : ''}" data-tab="docs">Shared docs</button>`;
   $('#tabs').hidden = kb;
   $('#messages').hidden = kb || !!selectedDoc;
@@ -131,8 +132,8 @@ function render() {
   $('#knowledge').hidden = !kb && !selectedDoc;
   $('#mention-menu').hidden = true;
   if (kb || selectedDoc) { renderDocs(); return; }
-  $('#messages').innerHTML = `${r.channel ? `<div class="channel-intro"><h1># ${r.name}</h1><p>${r.desc}</p></div>` : ''}<div class="date-divider">Today · September 14</div>` + chats[active].map((m, i) => `<article class="message" data-author="${m.who}">${avatar(m.who)}<div class="message-content"><div class="message-meta"><strong>${m.who === 'me' ? 'Weston Guo' : person(m.who)?.name}</strong>${person(m.who)?.agent ? '<span class="ai-tag">AI</span>' : ''}<time>${m.time}</time></div><div class="message-text">${escapeHTML(m.text).replace(/@(Dev|Design|Research)\b/gi, '<span class="mention-text">@$1</span>')}</div>${m.doc ? docCard(m.doc) : ''}${m.reaction ? `<button class="reaction ${m.liked ? 'on' : ''}" data-reaction="${i}" aria-label="Agree" aria-pressed="${!!m.liked}">👍 ${m.liked ? 3 : 2}</button>` : ''}</div></article>`).join('');
-  $('#input').placeholder = r.agent ? `Message ${r.name}…` : `Message ${r.channel ? '#' : ''}${r.name}. Type @ to mention an agent.`;
+  $('#messages').innerHTML = `${r.channel ? `<div class="channel-intro"><h1># ${r.name}</h1><p>${r.desc}</p></div>` : ''}<div class="date-divider">Today · September 14</div>` + chats[active].map((m, i) => `<article class="message" data-author="${m.who}">${avatar(m.who)}<div class="message-content"><div class="message-meta"><strong>${m.who === 'me' ? 'Weston Guo' : person(m.who)?.name}</strong><time>${m.time}</time></div><div class="message-text">${escapeHTML(m.text).replace(/@(Summer Lin|Alex Chen|Dev|Design|Research)\b/gi, '<span class="mention-text">@$1</span>')}</div>${m.doc ? docCard(m.doc) : ''}${m.reaction ? `<button class="reaction ${m.liked ? 'on' : ''}" data-reaction="${i}" aria-label="Agree" aria-pressed="${!!m.liked}">👍 ${m.liked ? 3 : 2}</button>` : ''}</div></article>`).join('');
+  $('#input').placeholder = `Message ${r.channel ? '#' : ''}${r.name}. Type @ to mention a coworker.`;
   $('#input').value = drafts[active] || '';
   $('#send').disabled = !$('#input').value.trim();
   renderSuggestions();
@@ -209,8 +210,8 @@ function send(text) {
   return { conversation: room, messages: chats[room].length, respondingAgents: recipients.map(a => a.id) };
 }
 function showMentions(query = '') {
-  const matches = agents.filter(a => a.name.toLowerCase().startsWith(query.toLowerCase()));
-  $('#mention-menu').innerHTML = matches.map(a => `<button type="button" class="pick-agent" data-mention="${a.id}">${avatar(a.id, true)}<span><strong>${a.name}</strong><small>${a.desc.split(' · ')[0]}</small></span><span class="badge">AI</span></button>`).join('');
+  const matches = coworkers.filter(a => a.name.toLowerCase().startsWith(query.toLowerCase()));
+  $('#mention-menu').innerHTML = matches.map(a => `<button type="button" class="pick-agent" data-mention="${a.id}">${avatar(a.id, true)}<span><strong>${a.name}</strong><small>${a.desc.split(' · ')[0]}</small></span></button>`).join('');
   $('#mention-menu').hidden = !matches.length;
 }
 function setInput(value) {
@@ -231,13 +232,19 @@ document.addEventListener('click', e => {
   if (e.target.closest('[data-back]')) { selectedDoc = 'list'; renderDocs(); }
   const reaction = e.target.closest('[data-reaction]'); if (reaction) { saveDraft(); const m = chats[active][Number(reaction.dataset.reaction)]; m.liked = !m.liked; render(); }
   const mention = e.target.closest('[data-mention]');
-  if (mention) { setInput($('#input').value.replace(/@[a-z]*$/i, '') + '@' + person(mention.dataset.mention).name + ' '); $('#mention-menu').hidden = true; }
+  if (mention) {
+    const input = $('#input'), left = input.value.slice(0, input.selectionStart), right = input.value.slice(input.selectionEnd);
+    const match = left.match(/@([a-z ]*)$/i);
+    const prefix = match && coworkers.some(c => c.name.toLowerCase().startsWith(match[1].toLowerCase())) ? left.slice(0, match.index) : left + (left && !/\s$/.test(left) ? ' ' : '');
+    const inserted = prefix + '@' + person(mention.dataset.mention).name + ' ';
+    setInput(inserted + right); input.setSelectionRange(inserted.length, inserted.length); $('#mention-menu').hidden = true;
+  }
   if (!e.target.closest('#composer')) $('#mention-menu').hidden = true;
 });
 $('#composer').addEventListener('submit', e => { e.preventDefault(); send($('#input').value); });
 $('#input').addEventListener('input', () => {
   drafts[active] = $('#input').value; $('#send').disabled = !$('#input').value.trim();
-  const match = $('#input').value.match(/@([a-z]*)$/i);
+  const match = $('#input').value.match(/@([a-z ]*)$/i);
   if (match) showMentions(match[1]); else $('#mention-menu').hidden = true;
 });
 $('#input').addEventListener('keydown', e => {
@@ -245,8 +252,8 @@ $('#input').addEventListener('keydown', e => {
   if (e.key === 'ArrowDown' && !$('#mention-menu').hidden) { e.preventDefault(); $('#mention-menu button')?.focus(); }
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault();
-    const match = $('#input').value.match(/@([a-z]*)$/i);
-    if (!$('#mention-menu').hidden && match && !agents.some(a => a.name.toLowerCase() === match[1].toLowerCase())) $('#mention-menu button')?.click();
+    const match = $('#input').value.match(/@([a-z ]*)$/i);
+    if (!$('#mention-menu').hidden && match && !coworkers.some(a => a.name.toLowerCase() === match[1].toLowerCase())) $('#mention-menu button')?.click();
     else send($('#input').value);
   }
 });

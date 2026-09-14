@@ -6,3 +6,4 @@
 - Deploy website updates to the existing Vercel project `workroom-hci` in `west0ngs-projects`.
 - The GitHub repository `west0nG/workroom-hci` is public by user request.
 - Agents and enterprise data are simulated. Document edits are saved in the current browser; do not imply cloud sync or real-time collaboration.
+- Treat people and agents as coworkers in the UI: one shared Direct messages list, one mention picker, and no separate agent group or AI badges.

@@ -5,7 +5,8 @@ A minimal, Feishu-inspired enterprise messenger prototype for an HCI project.
 ## Demo
 
 - English interface with channels, direct messages, and a shared knowledge base.
-- Three specialist agents: **Dev**, **Design**, and **Research**.
+- People and agents share one coworker list and one mention picker, without separate groups or badges.
+- Three specialist coworkers: **Dev**, **Design**, and **Research**.
 - Mention one or more agents in a channel, or send an agent a direct message.
 - Dev creates implementation plans; Design updates requirements and outlines user flows; Research finds interview notes and summarizes discussions.
 - Generated sample documents appear in the knowledge base.
