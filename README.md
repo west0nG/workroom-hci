@@ -44,12 +44,10 @@ Vercel runs `npm run build` and serves the `dist` directory as a static site. Th
 
 ## Assignment 2 interaction study
 
-Open **Compare interactions** above the workspace. Seven variants are available across three dimensions:
+Open **Variants** above the workspace. Seven variants are available across three dimensions:
 
 - Organization: one coworker list (default) or experimental People / Agents grouping. The mention picker stays shared.
 - Initiation: manual mentions/direct requests or proactive responses to supported discussion topics, with no pre-execution confirmation.
 - Review: a proposed addition requiring acceptance (with revision and discard), a subtle source highlight that dismisses on hover/focus/tap, or no special cue. Highlight dismissal never means content approval.
 
-Use **Prepare example**, send the prepared request, and open the resulting document. A new example document preserves prior edits. Modes apply to new additions; existing review states persist. URL parameters `organization`, `trigger`, and `review` share the comparison settings, not local document content. Reset demo resets chats and keeps documents.
-
-[Study notes](https://workroom-hci.vercel.app/study.html) include the original Assignment 1 problem statement, seven annotated screenshots and three-step flows, design rationale, possible consequences, references, and an AI use statement. The notes are a draft: verify the W3D2 need statement and class concept selection before submission.
+Use **New example**, send the prepared request, and open the resulting document. A new example document preserves prior edits. Modes apply to new additions; existing review states persist. URL parameters `organization`, `trigger`, and `review` share the comparison settings, not local document content. Reset conversation resets chats and keeps documents.

@@ -39,7 +39,7 @@ export function mountDocumentEditor({ element, content, onChange, sourceHighligh
         state.doc.forEach((node, position, index) => {
           if (index >= sourceHighlight.start) marks.push(Decoration.node(position, position + node.nodeSize, {
             class: sourceSeen ? '' : 'source-highlight', tabindex: sourceSeen ? '-1' : '0',
-            title: `Added by ${sourceHighlight.author} (Agent). Hover, focus, or tap to dismiss. This does not approve the content.`
+            title: `Added by ${sourceHighlight.author} (Agent).`
           }));
         });
         return DecorationSet.create(state.doc, marks);

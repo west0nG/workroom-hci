@@ -214,7 +214,7 @@ function replyFor(agent, text, scope) {
   if (agent.id === 'design' && /flow|screen|experience|design/i.test(prompt)) return { text: 'Here’s a simple search flow:\n\nOpen search → enter a query → filter by project → open the original message.\n\nKeep the query visible when changing filters, and show a clear empty state when nothing matches.' };
   if (/requirements|technical/i.test(prompt)) return { text: 'Here are the search requirements. V1 focuses on a visible search entry point and filtering results by project.', doc: 'requirements' };
   if (/find|interview|research|insight|learn|knowledge|notes/i.test(prompt)) return { text: 'The interview notes point to two main problems: search is easy to miss, and results from different projects get mixed together. People want a clearer entry point and a project filter.', doc: 'interviews' };
-  return { text: agent.id === 'dev' ? 'In this prototype, I can create an implementation plan or find the search requirements. Try “Create an implementation plan”.' : agent.id === 'design' ? 'In this prototype, I can update the search requirements or outline a user flow. Try “Update requirements”.' : 'In this prototype, I can find interview notes or summarize a channel. Try “Find user interview notes”.' };
+  return { text: agent.id === 'dev' ? 'I can create an implementation plan or find the search requirements. Try “Create an implementation plan”.' : agent.id === 'design' ? 'I can update the search requirements or outline a user flow. Try “Update requirements”.' : 'I can find interview notes or summarize a channel. Try “Find user interview notes”.' };
 }
 function send(text) {
   text = text.trim(); if (!text) return;
@@ -293,11 +293,7 @@ $('#reset').onclick = () => {
   Object.keys(drafts).forEach(k => delete drafts[k]); active = 'product'; view = 'chat'; selectedDoc = null; render();
 };
 function renderComparison() {
-  $('#variant-summary').textContent = `${variants.organization === 'unified' ? 'One coworker list' : 'Separate lists'} · ${variants.trigger === 'manual' ? '@ to delegate' : 'Proactive execution'} · ${ {explicit:'Explicit review', subtle:'Subtle highlight', none:'No review prompt'}[variants.review] }`;
   for (const [key, value] of Object.entries(variants)) $('#variant-' + key).value = value;
-  $('#scenario-instructions').textContent = variants.trigger === 'manual'
-    ? '1. Prepare the example. 2. Send with @Design to delegate (remove the mention to compare). 3. Open the returned document.'
-    : '1. Prepare the example. 2. Send the discussion message without a mention. 3. Open the document that Design creates without asking first.';
 }
 function renderReview(key) {
   const review = docs[key].review;
@@ -306,7 +302,7 @@ function renderReview(key) {
   const panel = document.createElement('section');
   panel.className = 'review-panel'; panel.setAttribute('aria-label', 'Document review');
   if (review.status === 'pending') {
-    panel.innerHTML = `<div class="review-label">PROPOSED ADDITION · ${escapeHTML(review.author)} (Agent)</div><p>Review this passage before it becomes part of the document.</p><div class="proposal">${review.html}</div><label class="revision-field" hidden>Revise the proposed text<textarea aria-label="Revise proposed text" rows="5"></textarea></label><div class="review-actions"><button class="primary" data-review-action="accept">Accept addition</button><button data-review-action="revise">Revise first</button><button data-review-action="dismiss">Discard</button></div><small>Accepting confirms that you have reviewed this addition.</small>`;
+    panel.innerHTML = `<div class="review-label">PROPOSED ADDITION · ${escapeHTML(review.author)} (Agent)</div><div class="proposal">${review.html}</div><label class="revision-field" hidden>Revise the proposed text<textarea aria-label="Revise proposed text" rows="5"></textarea></label><div class="review-actions"><button class="primary" data-review-action="accept">Accept addition</button><button data-review-action="revise">Revise first</button><button data-review-action="dismiss">Discard</button></div>`;
   } else panel.innerHTML = `<span>${review.status === 'accepted' ? '✓ Addition accepted by Weston Guo' : 'Addition discarded'}</span>`;
   $('#document-body').after(panel);
   panel.addEventListener('click', e => {
