@@ -173,7 +173,7 @@ function renderDocs() {
         <button data-history="undo" aria-label="Undo" title="Undo (⌘/Ctrl+Z)">↶</button><button data-history="redo" aria-label="Redo" title="Redo (⌘/Ctrl+Shift+Z)">↷</button>
       </div>
       <article class="document-page"><div class="document-page-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${icons.book}</svg></div><textarea id="document-title" aria-label="Document title" placeholder="Untitled" rows="1" spellcheck="true">${escapeHTML(doc.name)}</textarea><div class="document-properties"><span class="property-label">Edited by</span><span id="document-author-avatar">${avatar(rooms.find(r => r.name === doc.author)?.id || 'me', true)}</span><span id="document-author">${escapeHTML(doc.author)}</span><span class="property-dot">·</span><span id="document-date">${doc.updatedAt ? new Date(doc.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Sep 14'}</span></div><div class="document-rule"></div><div id="document-body"></div><div class="document-bottom"><span>Type <kbd>/</kbd> for blocks</span><span id="word-count"></span></div></article><div id="slash-menu" class="slash-menu" role="listbox" aria-label="Insert a block" hidden></div>`;
-    documentEditor = mountDocumentEditor({ element: $('#document-body'), content: doc.body, sourceHighlight: doc.review?.mode === 'subtle' && !doc.review.seen ? { start: doc.review.start, author: doc.review.author, onSeen() { doc.review.seen = true; persistDocuments(); } } : null, onChange(body) { updateDocument(key, { body }); $('#document-author').textContent = 'Weston Guo'; $('#document-author-avatar').innerHTML = avatar('me', true); $('#document-date').textContent = 'Just now'; } });
+    documentEditor = mountDocumentEditor({ element: $('#document-body'), content: doc.body, sourceHighlight: doc.review?.mode === 'subtle' && variants.review !== 'none' ? { start: doc.review.start, author: doc.review.author } : null, onChange(body) { updateDocument(key, { body }); $('#document-author').textContent = 'Weston Guo'; $('#document-author-avatar').innerHTML = avatar('me', true); $('#document-date').textContent = 'Just now'; } });
     requestAnimationFrame(() => { if (selectedDoc === key) renderReview(key); });
     const title = $('#document-title');
     const resizeTitle = () => { title.style.height = 'auto'; title.style.height = title.scrollHeight + 'px'; };
@@ -297,7 +297,7 @@ function renderComparison() {
 }
 function renderReview(key) {
   const review = docs[key].review;
-  if (!review || review.mode === 'none') return;
+  if (!review || review.mode === 'none' || variants.review === 'none') return;
   if (review.mode === 'subtle') return;
   const panel = document.createElement('section');
   panel.className = 'review-panel'; panel.setAttribute('aria-label', 'Document review');
