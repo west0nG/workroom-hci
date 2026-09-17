@@ -12,9 +12,9 @@ const rooms = [
   { id: 'product', name: 'product-design', desc: 'Turning good ideas into useful products.', people: '6 members', channel: true },
   { id: 'general', name: 'team-lounge', desc: 'Updates, ideas, and everyday conversations.', people: '12 members', channel: true },
   { id: 'launch', name: 'next-launch', desc: 'Getting ready for our next release.', people: '8 members', channel: true },
-  { id: 'dev', name: 'Dev', desc: 'Engineering · implementation plans and technical docs', agent: true, color: 'dev', initial: 'DV' },
-  { id: 'design', name: 'Design', desc: 'Product design · user flows and requirements', agent: true, color: 'design', initial: 'DS' },
-  { id: 'research', name: 'Research', desc: 'User research · insights and team knowledge', agent: true, color: 'research', initial: 'RS' },
+  { id: 'dev', name: 'Dev', personalName: 'Cindy', desc: 'Engineering · implementation plans and technical docs', agent: true, color: 'dev', initial: 'DV' },
+  { id: 'design', name: 'Design', personalName: 'Kenneth', desc: 'Product design · user flows and requirements', agent: true, color: 'design', initial: 'DS' },
+  { id: 'research', name: 'Research', personalName: 'Robin', desc: 'User research · insights and team knowledge', agent: true, color: 'research', initial: 'RS' },
   { id: 'lin', name: 'Summer Lin', desc: 'Product designer', initial: 'SL', color: 'mint' },
   { id: 'chen', name: 'Alex Chen', desc: 'Frontend engineer', initial: 'AC', color: 'peach' }
 ];
@@ -103,10 +103,21 @@ let selectedDoc = null;
 const drafts = {};
 const $ = s => document.querySelector(s);
 const person = id => rooms.find(r => r.id === id);
+const nameOf = coworker => variants.organization === 'unified' && coworker?.personalName ? coworker.personalName : coworker?.name || '';
+const aliases = coworker => [coworker.name, coworker.personalName].filter(Boolean);
+const matchesName = (coworker, query, exact = false) => aliases(coworker).some(name => exact ? name.toLowerCase() === query.toLowerCase() : name.toLowerCase().startsWith(query.toLowerCase()));
+const authorName = author => nameOf(rooms.find(r => aliases(r).includes(author))) || author;
+function messageText(text) {
+  return escapeHTML(text.replace(/I’m (Dev|Design|Research)\b/g, (_, role) => 'I’m ' + authorName(role)))
+    .replace(/@(Summer Lin|Alex Chen|Dev|Design|Research|Cindy|Kenneth|Robin)\b/gi, (_, alias) => {
+      const coworker = coworkers.find(c => matchesName(c, alias, true));
+      return '<span class="mention-text">@' + escapeHTML(nameOf(coworker) || alias) + '</span>';
+    });
+}
 const escapeHTML = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const avatar = (id, small = false) => {
   const p = person(id);
-  return `<span class="avatar ${small ? 'small ' : ''}${id === 'me' ? 'me' : p?.color || ''}">${id === 'me' ? 'W' : p?.initial || 'W'}</span>`;
+  return `<span class="avatar ${small ? 'small ' : ''}${id === 'me' ? 'me' : p?.color || ''}">${id === 'me' ? 'W' : p?.personalName && variants.organization === 'unified' ? p.personalName[0] : p?.initial || 'W'}</span>`;
 };
 const docCard = key => `<button class="doc-card" data-doc="${key}"><span class="doc-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${icons.book}</svg></span><span><strong>${escapeHTML(docs[key].name || 'Untitled')}</strong><small>Team knowledge · ${docs[key].updatedAt ? new Date(docs[key].updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Sep 14'}</small></span></button>`;
 function saveDraft() {
@@ -115,7 +126,7 @@ function saveDraft() {
 function renderNav() {
   const groups = { channels: rooms.filter(r => r.channel), direct: coworkers };
   Object.entries(groups).forEach(([id, members]) => {
-    $('#' + id).innerHTML = members.map(r => `<button class="conversation ${r.id === active && view === 'chat' ? 'selected' : ''}" data-room="${r.id}" aria-current="${r.id === active && view === 'chat' ? 'page' : 'false'}">${r.channel ? '<span class="hash">#</span>' : avatar(r.id, true)}<span>${r.name}</span></button>`).join('');
+    $('#' + id).innerHTML = members.map(r => `<button class="conversation ${r.id === active && view === 'chat' ? 'selected' : ''}" data-room="${r.id}" aria-current="${r.id === active && view === 'chat' ? 'page' : 'false'}">${r.channel ? '<span class="hash">#</span>' : avatar(r.id, true)}<span>${nameOf(r)}${r.agent && variants.organization === 'unified' ? `<small class="coworker-role">${r.name}</small>` : ''}</span></button>`).join('');
   });
   if (variants.organization === 'split') {
     const row = r => `<button class="conversation ${r.id === active && view === 'chat' ? 'selected' : ''}" data-room="${r.id}">${avatar(r.id, true)}<span>${r.name}</span></button>`;
@@ -138,14 +149,14 @@ function renderSuggestions() {
     ['Create dev plan', 'Create an implementation plan', 'dev'],
     ['Update requirements', 'Update requirements from this discussion', 'design']
   ];
-  $('.suggestions').innerHTML = '<span>Try asking</span>' + suggestions.map(([label, prompt, target]) => `<button data-prompt="${prompt}" data-target="${target}">${!person(active).agent ? `<span class="prompt-agent ${target}">${person(target).name}</span>` : ''}${label}</button>`).join('');
+  $('.suggestions').innerHTML = '<span>Try asking</span>' + suggestions.map(([label, prompt, target]) => `<button data-prompt="${prompt}" data-target="${target}">${!person(active).agent ? `<span class="prompt-agent ${target}">${nameOf(person(target))}</span>` : ''}${label}</button>`).join('');
 }
 function render() {
   documentEditor?.destroy(); documentEditor = null;
   renderNav();
   renderComparison();
   const r = person(active), kb = view === 'knowledge';
-  $('#header').innerHTML = `<div class="header-main">${kb ? '<span class="channel-symbol">▤</span>' : r.channel ? '<span class="channel-symbol">#</span>' : avatar(r.id)}<div><div class="header-title">${kb ? 'Knowledge' : r.name}</div><div class="header-sub">${kb ? 'A shared home for your team’s knowledge.' : r.channel ? r.people + ' · ' + r.desc : r.desc}</div></div></div>${!kb && r.channel ? '<div class="member-stack">' + avatar('lin', true) + avatar('chen', true) + avatar('me', true) + '<span>' + r.people + '</span></div>' : ''}`;
+  $('#header').innerHTML = `<div class="header-main">${kb ? '<span class="channel-symbol">▤</span>' : r.channel ? '<span class="channel-symbol">#</span>' : avatar(r.id)}<div><div class="header-title">${kb ? 'Knowledge' : nameOf(r)}</div><div class="header-sub">${kb ? 'A shared home for your team’s knowledge.' : r.channel ? r.people + ' · ' + r.desc : r.desc}</div></div></div>${!kb && r.channel ? '<div class="member-stack">' + avatar('lin', true) + avatar('chen', true) + avatar('me', true) + '<span>' + r.people + '</span></div>' : ''}`;
   $('#tabs').innerHTML = kb ? '' : `<button class="tab ${!selectedDoc ? 'active' : ''}" data-tab="chat">Messages</button><button class="tab ${selectedDoc ? 'active' : ''}" data-tab="docs">Shared docs</button>`;
   $('#tabs').hidden = kb;
   $('#messages').hidden = kb || !!selectedDoc;
@@ -153,8 +164,8 @@ function render() {
   $('#knowledge').hidden = !kb && !selectedDoc;
   $('#mention-menu').hidden = true;
   if (kb || selectedDoc) { renderDocs(); return; }
-  $('#messages').innerHTML = `${r.channel ? `<div class="channel-intro"><h1># ${r.name}</h1><p>${r.desc}</p></div>` : ''}<div class="date-divider">Today · September 14</div>` + chats[active].map((m, i) => `<article class="message" data-author="${m.who}">${avatar(m.who)}<div class="message-content"><div class="message-meta"><strong>${m.who === 'me' ? 'Weston Guo' : person(m.who)?.name}</strong><time>${m.time}</time></div><div class="message-text">${escapeHTML(m.text).replace(/@(Summer Lin|Alex Chen|Dev|Design|Research)\b/gi, '<span class="mention-text">@$1</span>')}</div>${m.doc ? docCard(m.doc) : ''}${m.reaction ? `<button class="reaction ${m.liked ? 'on' : ''}" data-reaction="${i}" aria-label="Agree" aria-pressed="${!!m.liked}">👍 ${m.liked ? 3 : 2}</button>` : ''}</div></article>`).join('');
-  $('#input').placeholder = `Message ${r.channel ? '#' : ''}${r.name}. ${variants.trigger === 'manual' ? 'Type @ to delegate.' : 'Coworkers may act on this discussion.'}`;
+  $('#messages').innerHTML = `${r.channel ? `<div class="channel-intro"><h1># ${r.name}</h1><p>${r.desc}</p></div>` : ''}<div class="date-divider">Today · September 14</div>` + chats[active].map((m, i) => `<article class="message" data-author="${m.who}">${avatar(m.who)}<div class="message-content"><div class="message-meta"><strong>${m.who === 'me' ? 'Weston Guo' : nameOf(person(m.who))}</strong><time>${m.time}</time></div><div class="message-text">${messageText(m.text)}</div>${m.doc ? docCard(m.doc) : ''}${m.reaction ? `<button class="reaction ${m.liked ? 'on' : ''}" data-reaction="${i}" aria-label="Agree" aria-pressed="${!!m.liked}">👍 ${m.liked ? 3 : 2}</button>` : ''}</div></article>`).join('');
+  $('#input').placeholder = `Message ${r.channel ? '#' : ''}${nameOf(r)}. ${variants.trigger === 'manual' ? 'Type @ to delegate.' : 'Coworkers may act on this discussion.'}`;
   $('#input').value = drafts[active] || '';
   $('#send').disabled = !$('#input').value.trim();
   renderSuggestions();
@@ -172,8 +183,8 @@ function renderDocs() {
         <button data-format="bulletList" aria-label="Bullet list" title="Bullet list">≡<small>•</small></button><button data-format="orderedList" aria-label="Numbered list" title="Numbered list">≡<small>1</small></button><button data-format="blockquote" aria-label="Quote" title="Quote">❝</button><button data-format="codeBlock" aria-label="Code block" title="Code block">&lt;/&gt;</button><span class="toolbar-divider"></span>
         <button data-history="undo" aria-label="Undo" title="Undo (⌘/Ctrl+Z)">↶</button><button data-history="redo" aria-label="Redo" title="Redo (⌘/Ctrl+Shift+Z)">↷</button>
       </div>
-      <article class="document-page"><div class="document-page-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${icons.book}</svg></div><textarea id="document-title" aria-label="Document title" placeholder="Untitled" rows="1" spellcheck="true">${escapeHTML(doc.name)}</textarea><div class="document-properties"><span class="property-label">Edited by</span><span id="document-author-avatar">${avatar(rooms.find(r => r.name === doc.author)?.id || 'me', true)}</span><span id="document-author">${escapeHTML(doc.author)}</span><span class="property-dot">·</span><span id="document-date">${doc.updatedAt ? new Date(doc.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Sep 14'}</span></div><div class="document-rule"></div><div id="document-body"></div><div class="document-bottom"><span>Type <kbd>/</kbd> for blocks</span><span id="word-count"></span></div></article><div id="slash-menu" class="slash-menu" role="listbox" aria-label="Insert a block" hidden></div>`;
-    documentEditor = mountDocumentEditor({ element: $('#document-body'), content: doc.body, sourceHighlight: doc.review?.mode === 'subtle' && variants.review !== 'none' ? { start: doc.review.start, author: doc.review.author } : null, onChange(body) { updateDocument(key, { body }); $('#document-author').textContent = 'Weston Guo'; $('#document-author-avatar').innerHTML = avatar('me', true); $('#document-date').textContent = 'Just now'; } });
+      <article class="document-page"><div class="document-page-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${icons.book}</svg></div><textarea id="document-title" aria-label="Document title" placeholder="Untitled" rows="1" spellcheck="true">${escapeHTML(doc.name)}</textarea><div class="document-properties"><span class="property-label">Edited by</span><span id="document-author-avatar">${avatar(rooms.find(r => r.name === doc.author)?.id || 'me', true)}</span><span id="document-author">${escapeHTML(authorName(doc.author))}</span><span class="property-dot">·</span><span id="document-date">${doc.updatedAt ? new Date(doc.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Sep 14'}</span></div><div class="document-rule"></div><div id="document-body"></div><div class="document-bottom"><span>Type <kbd>/</kbd> for blocks</span><span id="word-count"></span></div></article><div id="slash-menu" class="slash-menu" role="listbox" aria-label="Insert a block" hidden></div>`;
+    documentEditor = mountDocumentEditor({ element: $('#document-body'), content: doc.body, sourceHighlight: doc.review?.mode === 'subtle' && variants.review !== 'none' ? { start: doc.review.start, author: authorName(doc.review.author) } : null, onChange(body) { updateDocument(key, { body }); $('#document-author').textContent = 'Weston Guo'; $('#document-author-avatar').innerHTML = avatar('me', true); $('#document-date').textContent = 'Just now'; } });
     requestAnimationFrame(() => { if (selectedDoc === key) renderReview(key); });
     const title = $('#document-title');
     const resizeTitle = () => { title.style.height = 'auto'; title.style.height = title.scrollHeight + 'px'; };
@@ -181,7 +192,7 @@ function renderDocs() {
     title.addEventListener('input', () => { resizeTitle(); updateDocument(key, { name: title.value.replace(/\n/g, ' ') }); $('.breadcrumb-title').textContent = title.value || 'Untitled'; $('#document-author').textContent = 'Weston Guo'; $('#document-author-avatar').innerHTML = avatar('me', true); $('#document-date').textContent = 'Just now'; });
     title.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); documentEditor.focus(); } });
   } else {
-    $('#knowledge').innerHTML = `<div class="documents-list"><div class="documents-heading"><div><div class="eyebrow">WORKSPACE</div><h1>Team documents</h1><p>A place for ideas, context, and work in progress.</p></div><button class="new-document" data-new-document>+ New document</button></div><div class="documents-table-heading"><span>Name</span><span>Edited by</span></div>${Object.keys(docs).map(key => `<div class="document-row">${docCard(key)}<span class="document-row-author">${escapeHTML(docs[key].author)}</span></div>`).join('')}<p class="documents-local-note">Edits are saved automatically in this browser.</p></div>`;
+    $('#knowledge').innerHTML = `<div class="documents-list"><div class="documents-heading"><div><div class="eyebrow">WORKSPACE</div><h1>Team documents</h1><p>A place for ideas, context, and work in progress.</p></div><button class="new-document" data-new-document>+ New document</button></div><div class="documents-table-heading"><span>Name</span><span>Edited by</span></div>${Object.keys(docs).map(key => `<div class="document-row">${docCard(key)}<span class="document-row-author">${escapeHTML(authorName(docs[key].author))}</span></div>`).join('')}<p class="documents-local-note">Edits are saved automatically in this browser.</p></div>`;
   }
 }
 function switchRoom(id) {
@@ -194,7 +205,7 @@ function summarize(scope) {
   return 'Here’s the product discussion summary:\n1. Finding old messages takes too long.\n2. V1 will focus on a more visible search entry point and project filters.\n3. The team will review designs on Friday.';
 }
 function replyFor(agent, text, scope) {
-  const prompt = text.replace(/@(Dev|Design|Research)\b/gi, '').trim();
+  const prompt = text.replace(/@(Dev|Design|Research|Cindy|Kenneth|Robin)\b/gi, '').trim();
   if (/summari[sz]e|summary|recap/i.test(prompt)) return { text: summarize(scope) };
   if (agent.id === 'dev' && /plan|implement|build|code|develop|task/i.test(prompt)) {
     const launch = scope === 'launch';
@@ -221,7 +232,7 @@ function send(text) {
   const room = active;
   chats[room].push({ who: 'me', text, time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) });
   drafts[room] = '';
-  const mentioned = agents.filter(a => new RegExp('@' + a.name + '\\b', 'i').test(text));
+  const mentioned = agents.filter(a => aliases(a).some(name => new RegExp('@' + name + '\\b', 'i').test(text)));
   let recipients = mentioned.length ? mentioned : person(room).agent ? [person(room)] : [];
   if (!recipients.length && variants.trigger === 'proactive' && person(room).channel) {
     if (/requirements|update.*doc|revise.*doc/i.test(text)) recipients = [person('design')];
@@ -240,8 +251,8 @@ function send(text) {
   return { conversation: room, messages: chats[room].length, respondingAgents: recipients.map(a => a.id) };
 }
 function showMentions(query = '') {
-  const matches = coworkers.filter(a => a.name.toLowerCase().startsWith(query.toLowerCase()));
-  $('#mention-menu').innerHTML = matches.map(a => `<button type="button" class="pick-agent" data-mention="${a.id}">${avatar(a.id, true)}<span><strong>${a.name}</strong><small>${a.desc.split(' · ')[0]}</small></span></button>`).join('');
+  const matches = coworkers.filter(a => matchesName(a, query));
+  $('#mention-menu').innerHTML = matches.map(a => `<button type="button" class="pick-agent" data-mention="${a.id}">${avatar(a.id, true)}<span><strong>${nameOf(a)}</strong><small>${a.desc.split(' · ')[0]}</small></span></button>`).join('');
   $('#mention-menu').hidden = !matches.length;
 }
 function setInput(value) {
@@ -256,7 +267,7 @@ document.addEventListener('click', e => {
   const room = e.target.closest('[data-room]'); if (room) switchRoom(room.dataset.room);
   const v = e.target.closest('[data-view]'); if (v) { saveDraft(); view = v.dataset.view; selectedDoc = null; render(); }
   const p = e.target.closest('[data-prompt]');
-  if (p) setInput((person(active).agent || variants.trigger === 'proactive' ? '' : '@' + person(p.dataset.target).name + ' ') + p.dataset.prompt);
+  if (p) setInput((person(active).agent || variants.trigger === 'proactive' ? '' : '@' + nameOf(person(p.dataset.target)) + ' ') + p.dataset.prompt);
   const doc = e.target.closest('[data-doc]'); if (doc) { saveDraft(); selectedDoc = doc.dataset.doc; render(); }
   const tab = e.target.closest('[data-tab]'); if (tab) { saveDraft(); selectedDoc = tab.dataset.tab === 'docs' ? 'list' : null; render(); }
   if (e.target.closest('[data-back]')) { selectedDoc = 'list'; renderDocs(); }
@@ -265,8 +276,8 @@ document.addEventListener('click', e => {
   if (mention) {
     const input = $('#input'), left = input.value.slice(0, input.selectionStart), right = input.value.slice(input.selectionEnd);
     const match = left.match(/@([a-z ]*)$/i);
-    const prefix = match && coworkers.some(c => c.name.toLowerCase().startsWith(match[1].toLowerCase())) ? left.slice(0, match.index) : left + (left && !/\s$/.test(left) ? ' ' : '');
-    const inserted = prefix + '@' + person(mention.dataset.mention).name + ' ';
+    const prefix = match && coworkers.some(c => matchesName(c, match[1])) ? left.slice(0, match.index) : left + (left && !/\s$/.test(left) ? ' ' : '');
+    const inserted = prefix + '@' + nameOf(person(mention.dataset.mention)) + ' ';
     setInput(inserted + right); input.setSelectionRange(inserted.length, inserted.length); $('#mention-menu').hidden = true;
   }
   if (!e.target.closest('#composer')) $('#mention-menu').hidden = true;
@@ -283,7 +294,7 @@ $('#input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
     e.preventDefault();
     const match = $('#input').value.match(/@([a-z ]*)$/i);
-    if (!$('#mention-menu').hidden && match && !coworkers.some(a => a.name.toLowerCase() === match[1].toLowerCase())) $('#mention-menu button')?.click();
+    if (!$('#mention-menu').hidden && match && !coworkers.some(a => matchesName(a, match[1], true))) $('#mention-menu button')?.click();
     else send($('#input').value);
   }
 });
@@ -302,7 +313,7 @@ function renderReview(key) {
   const panel = document.createElement('section');
   panel.className = 'review-panel'; panel.setAttribute('aria-label', 'Document review');
   if (review.status === 'pending') {
-    panel.innerHTML = `<div class="review-label">PROPOSED ADDITION · ${escapeHTML(review.author)} (Agent)</div><div class="proposal">${review.html}</div><label class="revision-field" hidden>Revise the proposed text<textarea aria-label="Revise proposed text" rows="5"></textarea></label><div class="review-actions"><button class="primary" data-review-action="accept">Accept addition</button><button data-review-action="revise">Revise first</button><button data-review-action="dismiss">Discard</button></div>`;
+    panel.innerHTML = `<div class="review-label">PROPOSED ADDITION · ${escapeHTML(authorName(review.author))} (Agent)</div><div class="proposal">${review.html}</div><label class="revision-field" hidden>Revise the proposed text<textarea aria-label="Revise proposed text" rows="5"></textarea></label><div class="review-actions"><button class="primary" data-review-action="accept">Accept addition</button><button data-review-action="revise">Revise first</button><button data-review-action="dismiss">Discard</button></div>`;
   } else panel.innerHTML = `<span>${review.status === 'accepted' ? '✓ Addition accepted by Weston Guo' : 'Addition discarded'}</span>`;
   $('#document-body').after(panel);
   panel.addEventListener('click', e => {
@@ -344,7 +355,7 @@ $('#prepare-example').onclick = () => {
   render();
   $('#messages').scrollTop = 0;
   $('#knowledge').scrollTop = 0;
-  setInput((variants.trigger === 'manual' ? '@Design ' : '') + 'We need to update the requirements from this discussion.');
+  setInput((variants.trigger === 'manual' ? '@' + nameOf(person('design')) + ' ' : '') + 'We need to update the requirements from this discussion.');
   $('#comparison-panel').open = false;
 };
 
