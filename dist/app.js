@@ -333,9 +333,17 @@ for (const key of Object.keys(variants)) $('#variant-' + key).addEventListener('
   render();
 });
 $('#prepare-example').onclick = () => {
-  comparisonDocumentKey = 'example-' + crypto.randomUUID();
-  docs[comparisonDocumentKey] = { ...structuredClone(originalDocs.requirements), name: `Search requirements · ${ {explicit:'Explicit review',subtle:'Subtle highlight',none:'No prompt'}[variants.review] }` };
-  persistDocuments(); switchRoom('product');
+  documentEditor?.destroy(); documentEditor = null;
+  chats = structuredClone(base);
+  docs = structuredClone(originalDocs);
+  Object.keys(drafts).forEach(key => delete drafts[key]);
+  comparisonDocumentKey = null;
+  active = 'product'; view = 'chat'; selectedDoc = null;
+  $('#knowledge').replaceChildren();
+  persistDocuments();
+  render();
+  $('#messages').scrollTop = 0;
+  $('#knowledge').scrollTop = 0;
   setInput((variants.trigger === 'manual' ? '@Design ' : '') + 'We need to update the requirements from this discussion.');
   $('#comparison-panel').open = false;
 };
