@@ -126,7 +126,7 @@ function saveDraft() {
 function renderNav() {
   const groups = { channels: rooms.filter(r => r.channel), direct: coworkers };
   Object.entries(groups).forEach(([id, members]) => {
-    $('#' + id).innerHTML = members.map(r => `<button class="conversation ${r.id === active && view === 'chat' ? 'selected' : ''}" data-room="${r.id}" aria-current="${r.id === active && view === 'chat' ? 'page' : 'false'}">${r.channel ? '<span class="hash">#</span>' : avatar(r.id, true)}<span>${nameOf(r)}${r.agent && variants.organization === 'unified' ? `<small class="coworker-role">${r.name}</small>` : ''}</span></button>`).join('');
+    $('#' + id).innerHTML = members.map(r => `<button class="conversation ${r.id === active && view === 'chat' ? 'selected' : ''}" data-room="${r.id}" aria-current="${r.id === active && view === 'chat' ? 'page' : 'false'}">${r.channel ? '<span class="hash">#</span>' : avatar(r.id, true)}<span>${nameOf(r)}${r.agent && variants.organization === 'unified' ? `<small class="coworker-role">AI ${r.name}</small>` : ''}</span></button>`).join('');
   });
   if (variants.organization === 'split') {
     const row = r => `<button class="conversation ${r.id === active && view === 'chat' ? 'selected' : ''}" data-room="${r.id}">${avatar(r.id, true)}<span>${r.name}</span></button>`;
