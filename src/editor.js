@@ -1,8 +1,10 @@
 import { Editor } from '@tiptap/core';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 
-export function mountDocumentEditor({ element, content, onChange }) {
+export function mountDocumentEditor({ element, content, onChange, sourceHighlight = null }) {
+  let sourceSeen = false;
   const toolbar = document.querySelector('#editor-toolbar');
   const blockSelect = document.querySelector('#block-type');
   const menu = document.querySelector('#slash-menu');
@@ -31,6 +33,22 @@ export function mountDocumentEditor({ element, content, onChange }) {
     ],
     content,
     editorProps: {
+      decorations(state) {
+        if (!sourceHighlight) return DecorationSet.empty;
+        const marks = [];
+        state.doc.forEach((node, position, index) => {
+          if (index >= sourceHighlight.start) marks.push(Decoration.node(position, position + node.nodeSize, {
+            class: sourceSeen ? '' : 'source-highlight', tabindex: sourceSeen ? '-1' : '0',
+            title: `Added by ${sourceHighlight.author} (Agent). Hover, focus, or tap to dismiss. This does not approve the content.`
+          }));
+        });
+        return DecorationSet.create(state.doc, marks);
+      },
+      handleDOMEvents: {
+        pointerover: acknowledgeSource,
+        focusin: acknowledgeSource,
+        click: acknowledgeSource
+      },
       attributes: { class: 'document-content', role: 'textbox', 'aria-label': 'Document body', 'aria-multiline': 'true', spellcheck: 'true' },
       handleKeyDown(_view, event) {
         if (menu.hidden) return false;
@@ -47,6 +65,12 @@ export function mountDocumentEditor({ element, content, onChange }) {
     onUpdate({ editor }) { onChange(editor.getHTML()); refresh(); },
     onSelectionUpdate() { refresh(); }
   });
+  function acknowledgeSource(view, event) {
+    if (sourceHighlight && !sourceSeen && event.target.closest('.source-highlight')) {
+      sourceSeen = true; sourceHighlight.onSeen(); view.dispatch(view.state.tr);
+    }
+    return false;
+  }
   function hideMenu() { menu.hidden = true; slashRange = null; }
   function paintMenu() {
     menu.innerHTML = '<div class="slash-label">INSERT A BLOCK</div>' + options.map((b, i) => `<button type="button" data-block="${b.id}" class="slash-option ${i === selected ? 'selected' : ''}" role="option" aria-selected="${i === selected}"><span class="block-symbol">${b.icon === '</>' ? '&lt;/&gt;' : b.icon}</span><span><strong>${b.name}</strong><small>${b.hint}</small></span></button>`).join('');

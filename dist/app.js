@@ -47,6 +47,13 @@ const originalDocs = {
   requirements: { name: 'Search experience · Product requirements', author: 'Summer Lin', body: '<h2>Goal</h2><p>Reduce the time it takes to find past messages.</p><h2>Initial scope</h2><ul><li>Improve visibility of the search entry point.</li><li>Support filtering search results by project.</li></ul>' },
   onboarding: { name: 'Welcome to Workroom', author: 'Summer Lin', body: '<h2>Your first week</h2><ul><li>Introduce yourself in #team-lounge.</li><li>Confirm this week’s goals with your project lead.</li><li>Explore the knowledge base or ask a coworker.</li></ul>' }
 };
+const query = new URLSearchParams(location.search);
+const variants = {
+  organization: query.get('organization') === 'split' ? 'split' : 'unified',
+  trigger: query.get('trigger') === 'proactive' ? 'proactive' : 'manual',
+  review: ['explicit', 'subtle', 'none'].includes(query.get('review')) ? query.get('review') : 'explicit'
+};
+let comparisonDocumentKey = null;
 let chats = structuredClone(base);
 const documentStorageKey = 'workroom.documents.v1';
 let storageAvailable = true;
@@ -59,7 +66,7 @@ function loadDocuments() {
     if (saved?.version === 1 && saved.docs && typeof saved.docs === 'object') {
       for (const [key, doc] of Object.entries(saved.docs)) {
         if (/^[a-z0-9-]+$/.test(key) && !['constructor', 'prototype'].includes(key) && doc && typeof doc.name === 'string' && typeof doc.body === 'string') {
-          initial[key] = { name: doc.name, body: doc.body, author: typeof doc.author === 'string' ? doc.author : 'Weston Guo', updated: !!doc.updated, updatedAt: typeof doc.updatedAt === 'string' ? doc.updatedAt : null };
+          initial[key] = { name: doc.name, body: doc.body, author: typeof doc.author === 'string' ? doc.author : 'Weston Guo', updated: !!doc.updated, updatedAt: typeof doc.updatedAt === 'string' ? doc.updatedAt : null, review: doc.review && ['explicit','subtle','none'].includes(doc.review.mode) ? doc.review : null };
         }
       }
     }
@@ -77,9 +84,18 @@ function updateDocument(key, changes) {
   persistDocuments();
 }
 function appendAgentDocument(key, nextDoc) {
-  if (docs[key]) {
-    if (!docs[key].body.includes(nextDoc.body)) docs[key] = { ...docs[key], body: docs[key].body + '<hr>' + nextDoc.body, author: nextDoc.author, updated: true, updatedAt: new Date().toISOString() };
-  } else docs[key] = { ...nextDoc, updatedAt: new Date().toISOString() };
+  const previous = docs[key] || { name: nextDoc.name, body: '', author: nextDoc.author };
+  if (previous.body.includes(nextDoc.body) || previous.review?.html === nextDoc.body) return;
+  // Preserve an outstanding proposal before allowing another generation.
+  if (previous.review?.status === 'pending') return;
+  const mode = variants.review;
+  const before = new DOMParser().parseFromString(previous.body, 'text/html').body.children.length;
+  docs[key] = { ...previous, updated: true, updatedAt: new Date().toISOString(),
+    body: mode === 'explicit' ? previous.body : previous.body + nextDoc.body,
+    author: mode === 'explicit' ? previous.author : nextDoc.author,
+    review: { mode, status: mode === 'explicit' ? 'pending' : 'added', html: nextDoc.body,
+      author: nextDoc.author, start: before, seen: false }
+  };
 }
 let active = 'product';
 let view = 'chat';
@@ -101,6 +117,10 @@ function renderNav() {
   Object.entries(groups).forEach(([id, members]) => {
     $('#' + id).innerHTML = members.map(r => `<button class="conversation ${r.id === active && view === 'chat' ? 'selected' : ''}" data-room="${r.id}" aria-current="${r.id === active && view === 'chat' ? 'page' : 'false'}">${r.channel ? '<span class="hash">#</span>' : avatar(r.id, true)}<span>${r.name}</span></button>`).join('');
   });
+  if (variants.organization === 'split') {
+    const row = r => `<button class="conversation ${r.id === active && view === 'chat' ? 'selected' : ''}" data-room="${r.id}">${avatar(r.id, true)}<span>${r.name}</span></button>`;
+    $('#direct').innerHTML = '<div class="section-label">People</div>' + coworkers.filter(r => !r.agent).map(row).join('') + '<div class="section-label">Agents</div>' + coworkers.filter(r => r.agent).map(row).join('');
+  }
   document.querySelectorAll('.rail-item').forEach(el => el.classList.toggle('active', el.dataset.view === view));
 }
 function renderSuggestions() {
@@ -123,6 +143,7 @@ function renderSuggestions() {
 function render() {
   documentEditor?.destroy(); documentEditor = null;
   renderNav();
+  renderComparison();
   const r = person(active), kb = view === 'knowledge';
   $('#header').innerHTML = `<div class="header-main">${kb ? '<span class="channel-symbol">▤</span>' : r.channel ? '<span class="channel-symbol">#</span>' : avatar(r.id)}<div><div class="header-title">${kb ? 'Knowledge' : r.name}</div><div class="header-sub">${kb ? 'A shared home for your team’s knowledge.' : r.channel ? r.people + ' · ' + r.desc : r.desc}</div></div></div>${!kb && r.channel ? '<div class="member-stack">' + avatar('lin', true) + avatar('chen', true) + avatar('me', true) + '<span>' + r.people + '</span></div>' : ''}`;
   $('#tabs').innerHTML = kb ? '' : `<button class="tab ${!selectedDoc ? 'active' : ''}" data-tab="chat">Messages</button><button class="tab ${selectedDoc ? 'active' : ''}" data-tab="docs">Shared docs</button>`;
@@ -133,7 +154,7 @@ function render() {
   $('#mention-menu').hidden = true;
   if (kb || selectedDoc) { renderDocs(); return; }
   $('#messages').innerHTML = `${r.channel ? `<div class="channel-intro"><h1># ${r.name}</h1><p>${r.desc}</p></div>` : ''}<div class="date-divider">Today · September 14</div>` + chats[active].map((m, i) => `<article class="message" data-author="${m.who}">${avatar(m.who)}<div class="message-content"><div class="message-meta"><strong>${m.who === 'me' ? 'Weston Guo' : person(m.who)?.name}</strong><time>${m.time}</time></div><div class="message-text">${escapeHTML(m.text).replace(/@(Summer Lin|Alex Chen|Dev|Design|Research)\b/gi, '<span class="mention-text">@$1</span>')}</div>${m.doc ? docCard(m.doc) : ''}${m.reaction ? `<button class="reaction ${m.liked ? 'on' : ''}" data-reaction="${i}" aria-label="Agree" aria-pressed="${!!m.liked}">👍 ${m.liked ? 3 : 2}</button>` : ''}</div></article>`).join('');
-  $('#input').placeholder = `Message ${r.channel ? '#' : ''}${r.name}. Type @ to mention a coworker.`;
+  $('#input').placeholder = `Message ${r.channel ? '#' : ''}${r.name}. ${variants.trigger === 'manual' ? 'Type @ to delegate.' : 'Coworkers may act on this discussion.'}`;
   $('#input').value = drafts[active] || '';
   $('#send').disabled = !$('#input').value.trim();
   renderSuggestions();
@@ -152,7 +173,8 @@ function renderDocs() {
         <button data-history="undo" aria-label="Undo" title="Undo (⌘/Ctrl+Z)">↶</button><button data-history="redo" aria-label="Redo" title="Redo (⌘/Ctrl+Shift+Z)">↷</button>
       </div>
       <article class="document-page"><div class="document-page-icon"><svg viewBox="0 0 24 24" aria-hidden="true">${icons.book}</svg></div><textarea id="document-title" aria-label="Document title" placeholder="Untitled" rows="1" spellcheck="true">${escapeHTML(doc.name)}</textarea><div class="document-properties"><span class="property-label">Edited by</span><span id="document-author-avatar">${avatar(rooms.find(r => r.name === doc.author)?.id || 'me', true)}</span><span id="document-author">${escapeHTML(doc.author)}</span><span class="property-dot">·</span><span id="document-date">${doc.updatedAt ? new Date(doc.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'Sep 14'}</span></div><div class="document-rule"></div><div id="document-body"></div><div class="document-bottom"><span>Type <kbd>/</kbd> for blocks</span><span id="word-count"></span></div></article><div id="slash-menu" class="slash-menu" role="listbox" aria-label="Insert a block" hidden></div>`;
-    documentEditor = mountDocumentEditor({ element: $('#document-body'), content: doc.body, onChange(body) { updateDocument(key, { body }); $('#document-author').textContent = 'Weston Guo'; $('#document-author-avatar').innerHTML = avatar('me', true); $('#document-date').textContent = 'Just now'; } });
+    documentEditor = mountDocumentEditor({ element: $('#document-body'), content: doc.body, sourceHighlight: doc.review?.mode === 'subtle' && !doc.review.seen ? { start: doc.review.start, author: doc.review.author, onSeen() { doc.review.seen = true; persistDocuments(); } } : null, onChange(body) { updateDocument(key, { body }); $('#document-author').textContent = 'Weston Guo'; $('#document-author-avatar').innerHTML = avatar('me', true); $('#document-date').textContent = 'Just now'; } });
+    requestAnimationFrame(() => { if (selectedDoc === key) renderReview(key); });
     const title = $('#document-title');
     const resizeTitle = () => { title.style.height = 'auto'; title.style.height = title.scrollHeight + 'px'; };
     resizeTitle();
@@ -186,8 +208,8 @@ function replyFor(agent, text, scope) {
       appendAgentDocument('launch-design', { name: 'Beta onboarding · Design brief', author: 'Design', updated: true, body: '<h2>Scope</h2><p>Prepare onboarding screens for next Wednesday’s beta.</p><h2>Owner and review</h2><p>Summer owns the screens. Review launch copy together tomorrow afternoon.</p>' });
       return { text: 'I created an onboarding design brief from this channel’s decisions. It covers the beta timeline, Summer’s ownership, and tomorrow’s copy review.', doc: 'launch-design' };
     }
-    appendAgentDocument('requirements', { name: docs.requirements.name, author: 'Design', updated: true, body: '<h2>Team decisions</h2><p>V1 focuses on the search entry point and project filters. Review the interaction design on Friday.</p><h2>User flow</h2><p>Open search → enter a query → filter by project → open the original message.</p>' });
-    return { text: 'I updated the search requirements with the team’s decisions: a visible search entry point, project filtering, and a Friday design review.', doc: 'requirements' };
+    appendAgentDocument(comparisonDocumentKey || 'requirements', { name: docs[comparisonDocumentKey || 'requirements'].name, author: 'Design', updated: true, body: '<h2>Team decisions</h2><p>V1 focuses on the search entry point and project filters. Review the interaction design on Friday.</p><h2>User flow</h2><p>Open search → enter a query → filter by project → open the original message.</p>' });
+    return { text: 'I updated the search requirements with the team’s decisions: a visible search entry point, project filtering, and a Friday design review.', doc: comparisonDocumentKey || 'requirements' };
   }
   if (agent.id === 'design' && /flow|screen|experience|design/i.test(prompt)) return { text: 'Here’s a simple search flow:\n\nOpen search → enter a query → filter by project → open the original message.\n\nKeep the query visible when changing filters, and show a clear empty state when nothing matches.' };
   if (/requirements|technical/i.test(prompt)) return { text: 'Here are the search requirements. V1 focuses on a visible search entry point and filtering results by project.', doc: 'requirements' };
@@ -200,10 +222,18 @@ function send(text) {
   chats[room].push({ who: 'me', text, time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) });
   drafts[room] = '';
   const mentioned = agents.filter(a => new RegExp('@' + a.name + '\\b', 'i').test(text));
-  const recipients = mentioned.length ? mentioned : person(room).agent ? [person(room)] : [];
+  let recipients = mentioned.length ? mentioned : person(room).agent ? [person(room)] : [];
+  if (!recipients.length && variants.trigger === 'proactive' && person(room).channel) {
+    if (/requirements|update.*doc|revise.*doc/i.test(text)) recipients = [person('design')];
+    else if (/plan|implement|build/i.test(text)) recipients = [person('dev')];
+    else if (/summari[sz]e|summary|recap|interview|research/i.test(text)) recipients = [person('research')];
+  }
   recipients.forEach(agent => {
     const scope = person(room).channel ? room : 'product';
-    chats[room].push({ who: agent.id, ...replyFor(agent, text, scope), time: 'Just now' });
+    const result = replyFor(agent, text, scope);
+    if (result.doc && docs[result.doc].review?.status === 'pending') result.text = 'I prepared a proposed addition. Open the document to review, revise, or accept it.';
+    if (!mentioned.length && !person(room).agent && variants.trigger === 'proactive') result.text = 'I picked this up from the discussion. ' + result.text;
+    chats[room].push({ who: agent.id, ...result, time: 'Just now' });
   });
   persistDocuments();
   render(); $('#messages').scrollTop = $('#messages').scrollHeight; $('#input').focus();
@@ -226,7 +256,7 @@ document.addEventListener('click', e => {
   const room = e.target.closest('[data-room]'); if (room) switchRoom(room.dataset.room);
   const v = e.target.closest('[data-view]'); if (v) { saveDraft(); view = v.dataset.view; selectedDoc = null; render(); }
   const p = e.target.closest('[data-prompt]');
-  if (p) setInput((person(active).agent ? '' : '@' + person(p.dataset.target).name + ' ') + p.dataset.prompt);
+  if (p) setInput((person(active).agent || variants.trigger === 'proactive' ? '' : '@' + person(p.dataset.target).name + ' ') + p.dataset.prompt);
   const doc = e.target.closest('[data-doc]'); if (doc) { saveDraft(); selectedDoc = doc.dataset.doc; render(); }
   const tab = e.target.closest('[data-tab]'); if (tab) { saveDraft(); selectedDoc = tab.dataset.tab === 'docs' ? 'list' : null; render(); }
   if (e.target.closest('[data-back]')) { selectedDoc = 'list'; renderDocs(); }
@@ -259,9 +289,61 @@ $('#input').addEventListener('keydown', e => {
 });
 $('#mention').onclick = () => { if ($('#mention-menu').hidden) showMentions(); else $('#mention-menu').hidden = true; };
 $('#reset').onclick = () => {
-  chats = structuredClone(base);
+  chats = structuredClone(base); comparisonDocumentKey = null;
   Object.keys(drafts).forEach(k => delete drafts[k]); active = 'product'; view = 'chat'; selectedDoc = null; render();
 };
+function renderComparison() {
+  $('#variant-summary').textContent = `${variants.organization === 'unified' ? 'One coworker list' : 'Separate lists'} · ${variants.trigger === 'manual' ? '@ to delegate' : 'Proactive execution'} · ${ {explicit:'Explicit review', subtle:'Subtle highlight', none:'No review prompt'}[variants.review] }`;
+  for (const [key, value] of Object.entries(variants)) $('#variant-' + key).value = value;
+  $('#scenario-instructions').textContent = variants.trigger === 'manual'
+    ? '1. Prepare the example. 2. Send with @Design to delegate (remove the mention to compare). 3. Open the returned document.'
+    : '1. Prepare the example. 2. Send the discussion message without a mention. 3. Open the document that Design creates without asking first.';
+}
+function renderReview(key) {
+  const review = docs[key].review;
+  if (!review || review.mode === 'none') return;
+  if (review.mode === 'subtle') return;
+  const panel = document.createElement('section');
+  panel.className = 'review-panel'; panel.setAttribute('aria-label', 'Document review');
+  if (review.status === 'pending') {
+    panel.innerHTML = `<div class="review-label">PROPOSED ADDITION · ${escapeHTML(review.author)} (Agent)</div><p>Review this passage before it becomes part of the document.</p><div class="proposal">${review.html}</div><label class="revision-field" hidden>Revise the proposed text<textarea aria-label="Revise proposed text" rows="5"></textarea></label><div class="review-actions"><button class="primary" data-review-action="accept">Accept addition</button><button data-review-action="revise">Revise first</button><button data-review-action="dismiss">Discard</button></div><small>Accepting confirms that you have reviewed this addition.</small>`;
+  } else panel.innerHTML = `<span>${review.status === 'accepted' ? '✓ Addition accepted by Weston Guo' : 'Addition discarded'}</span>`;
+  $('#document-body').after(panel);
+  panel.addEventListener('click', e => {
+    const action = e.target.closest('[data-review-action]')?.dataset.reviewAction;
+    if (!action) return;
+    if (action === 'revise') {
+      const field = panel.querySelector('.revision-field'); field.hidden = false;
+      const text = [...new DOMParser().parseFromString(review.html, 'text/html').body.children].map(el => el.textContent).join('\n\n');
+      field.querySelector('textarea').value = text; field.querySelector('textarea').focus();
+      panel.querySelector('.proposal').hidden = true;
+      panel.querySelector('[data-review-action="accept"]').textContent = 'Accept revised addition';
+      e.target.hidden = true; return;
+    }
+    if (action === 'accept') {
+      const field = panel.querySelector('.revision-field');
+      const addition = field.hidden ? review.html : field.querySelector('textarea').value.split(/\n+/).filter(Boolean).map(line => '<p>' + escapeHTML(line) + '</p>').join('');
+      if (!addition) { field.querySelector('textarea').focus(); return; }
+      docs[key].body += addition; review.status = 'accepted'; docs[key].author = 'Weston Guo';
+    } else review.status = 'discarded';
+    persistDocuments(); renderDocs();
+  });
+}
+for (const key of Object.keys(variants)) $('#variant-' + key).addEventListener('change', e => {
+  saveDraft(); variants[key] = e.target.value;
+  const url = new URL(location.href);
+  Object.entries(variants).forEach(([k, v]) => url.searchParams.set(k, v));
+  history.replaceState(null, '', url);
+  render();
+});
+$('#prepare-example').onclick = () => {
+  comparisonDocumentKey = 'example-' + crypto.randomUUID();
+  docs[comparisonDocumentKey] = { ...structuredClone(originalDocs.requirements), name: `Search requirements · ${ {explicit:'Explicit review',subtle:'Subtle highlight',none:'No prompt'}[variants.review] }` };
+  persistDocuments(); switchRoom('product');
+  setInput((variants.trigger === 'manual' ? '@Design ' : '') + 'We need to update the requirements from this discussion.');
+  $('#comparison-panel').open = false;
+};
+
 render();
 if (document.modelContext?.registerTool) {
   try {
